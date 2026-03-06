@@ -1,0 +1,44 @@
+/**
+ * API client for AI Course Advisor backend.
+ * Uses fetch with credentials for session-based auth.
+ */
+
+const API_BASE = '/api';
+
+async function request(endpoint, options = {}) {
+  const res = await fetch(`${API_BASE}${endpoint}`, {
+    ...options,
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data.error || `Request failed: ${res.status}`);
+  }
+  return data;
+}
+
+export const api = {
+  // Auth
+  register: (data) => request('/auth/register', { method: 'POST', body: JSON.stringify(data) }),
+  login: (data) => request('/auth/login', { method: 'POST', body: JSON.stringify(data) }),
+  logout: () => request('/auth/logout', { method: 'POST' }),
+  me: () => request('/auth/me'),
+
+  // Profile
+  getProfile: () => request('/profile'),
+  updateProfile: (data) => request('/profile', { method: 'PUT', body: JSON.stringify(data) }),
+
+  // Courses
+  getCourses: () => request('/courses'),
+
+  // Advisor
+  getRecommendations: (query) => request('/recommend', {
+    method: 'POST',
+    body: JSON.stringify({ query }),
+  }),
+  getProgress: () => request('/progress'),
+};
