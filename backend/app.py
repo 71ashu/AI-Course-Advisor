@@ -1,6 +1,6 @@
 """
 AI Course Advisor - Full Stack Backend
-Flask API with SQLite database, authentication, and intelligent recommendations
+Flask API with PostgreSQL database, authentication, and intelligent recommendations
 """
 
 from flask import Flask, request, jsonify, session
