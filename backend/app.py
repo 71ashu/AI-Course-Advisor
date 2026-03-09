@@ -5,6 +5,7 @@ Flask API with PostgreSQL database, authentication, and intelligent recommendati
 
 from flask import Flask, request, jsonify, session
 from flask_cors import CORS
+from flask_migrate import Migrate
 from config import Config
 from models import db, Course, Student, StudentCourse
 from services import get_degree_progress, get_recommendations
@@ -13,6 +14,7 @@ app = Flask(__name__)
 app.config.from_object(Config)
 CORS(app, supports_credentials=True, origins=['http://localhost:5173', 'http://127.0.0.1:5173'])
 db.init_app(app)
+migrate = Migrate(app, db)
 
 
 def get_current_student():
@@ -46,6 +48,7 @@ def register():
     db.session.add(student)
     db.session.commit()
     
+    session.permanent = True
     session['student_id'] = student.id
     return jsonify({'student': student.to_dict()})
 
@@ -60,6 +63,7 @@ def login():
     if not student or not student.check_password(data['password']):
         return jsonify({'error': 'Invalid credentials'}), 401
     
+    session.permanent = True
     session['student_id'] = student.id
     return jsonify({'student': student.to_dict()})
 
@@ -148,13 +152,12 @@ def progress():
 
 @app.route('/api/health', methods=['GET'])
 def health():
-    return jsonify({'status': 'healthy'})
-
-
-# ============ Init DB ============
-
-with app.app_context():
-    db.create_all()
+    try:
+        db.session.execute(db.text('SELECT 1'))
+        db_status = 'connected'
+    except Exception:
+        db_status = 'disconnected'
+    return jsonify({'status': 'healthy', 'database': db_status})
 
 
 if __name__ == '__main__':

@@ -5,30 +5,43 @@ from werkzeug.security import generate_password_hash, check_password_hash
 
 db = SQLAlchemy()
 
+class ProgramCourse(db.Model):
+    """Junction table linking programs to their courses (many-to-many)."""
+    __tablename__ = 'program_courses'
+
+    program_id = db.Column(db.String(50), db.ForeignKey('programs.program_id', ondelete='CASCADE'), primary_key=True)
+    course_id = db.Column(db.String(20), db.ForeignKey('courses.id', ondelete='CASCADE'), primary_key=True)
+
+    program = db.relationship('Program', backref=db.backref('program_courses', lazy='dynamic'))
+    course = db.relationship('Course', backref=db.backref('program_courses', lazy='dynamic'))
+
+
 class Course(db.Model):
     __tablename__ = 'courses'
-    
+
+    # course_number is the natural key, e.g. "AMTH 200", "CSEN 342"
     id = db.Column(db.String(20), primary_key=True)
     name = db.Column(db.String(200), nullable=False)
-    credits = db.Column(db.Integer, default=3)
-    difficulty = db.Column(db.String(20), default='intermediate')  # beginner, intermediate, advanced
+    units = db.Column(db.Integer, default=3)
+    # level: "Graduate", "Graduate Core", "Advanced Graduate", "Graduate (300-level)", "Graduate Lab"
+    level = db.Column(db.String(50))
     description = db.Column(db.Text)
     department = db.Column(db.String(100))
-    topics = db.Column(db.JSON, default=list)  # e.g. ["AI", "machine learning"]
-    
-    # Prerequisites stored as JSON array of course IDs
     prerequisites = db.Column(db.JSON, default=list)
-    
+
+    # Legacy fields retained for backwards-compatibility with seeded demo data
+    difficulty = db.Column(db.String(20))
+    topics = db.Column(db.JSON, default=list)
+
     def to_dict(self):
         return {
-            'id': self.id,
-            'name': self.name,
-            'credits': self.credits,
-            'difficulty': self.difficulty,
-            'description': self.description,
+            'course_number': self.id,
+            'course_name': self.name,
+            'units': self.units,
+            'level': self.level or '',
+            'description': self.description or '',
             'department': self.department or '',
-            'topics': self.topics or [],
-            'prerequisites': self.prerequisites or []
+            'prerequisites': self.prerequisites or [],
         }
 
 
@@ -64,6 +77,45 @@ class Student(db.Model):
             'careerGoals': self.career_goals or '',
             'completedCourses': [sc.course_id for sc in completed],
             'currentCourses': [sc.course_id for sc in current]
+        }
+
+
+class Program(db.Model):
+    __tablename__ = 'programs'
+
+    program_id = db.Column(db.String(50), primary_key=True)
+    program_name = db.Column(db.String(200), nullable=False)
+    degree_type = db.Column(db.String(50), nullable=False)
+    department = db.Column(db.String(200))
+    description = db.Column(db.Text)
+    total_units_required = db.Column(db.Integer)
+    minimum_gpa = db.Column(db.Float)
+
+    # Complex nested structures stored as JSONB
+    requirements = db.Column(db.JSON, default=dict)
+    concentrations = db.Column(db.JSON, default=list)
+    learning_outcomes = db.Column(db.JSON, default=list)
+    admission_requirements = db.Column(db.JSON, default=dict)
+
+    # Optional fields present only on some programs
+    special_features = db.Column(db.JSON, default=list)
+    time_limit = db.Column(db.String(200))
+
+    def to_dict(self):
+        return {
+            'program_id': self.program_id,
+            'program_name': self.program_name,
+            'degree_type': self.degree_type,
+            'department': self.department,
+            'description': self.description,
+            'total_units_required': self.total_units_required,
+            'minimum_gpa': self.minimum_gpa,
+            'requirements': self.requirements or {},
+            'concentrations': self.concentrations or [],
+            'learning_outcomes': self.learning_outcomes or [],
+            'admission_requirements': self.admission_requirements or {},
+            'special_features': self.special_features or [],
+            'time_limit': self.time_limit,
         }
 
 
