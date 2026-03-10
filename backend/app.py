@@ -9,6 +9,7 @@ from flask_migrate import Migrate
 from config import Config
 from models import db, Course, Student, StudentCourse
 from services import get_degree_progress, get_recommendations
+from llm import get_advisory_message
 
 app = Flask(__name__)
 app.config.from_object(Config)
@@ -135,7 +136,8 @@ def recommend():
     data = request.json or {}
     query = data.get('query', '')
     recommendations = get_recommendations(student, query)
-    return jsonify({'recommendations': recommendations})
+    message = get_advisory_message(student, query, recommendations)
+    return jsonify({'recommendations': recommendations, 'message': message})
 
 
 @app.route('/api/progress', methods=['GET'])

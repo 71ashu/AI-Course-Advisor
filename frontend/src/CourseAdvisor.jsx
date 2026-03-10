@@ -38,12 +38,12 @@ export default function CourseAdvisor({ student, onLogout, onProfileUpdate }) {
     setIsLoading(true);
 
     try {
-      const { recommendations: recs } = await api.getRecommendations(query);
+      const { recommendations: recs, message } = await api.getRecommendations(query);
       setRecommendations(recs);
 
       const aiMessage = {
         role: 'assistant',
-        content: `Based on your profile as a ${studentProfile.year} majoring in ${studentProfile.major}, I've found ${recs.length} courses that align with your goals. Check out the recommendations below!`,
+        content: message,
         recommendations: recs
       };
 
