@@ -7,7 +7,7 @@ from flask import Flask, request, jsonify, session
 from flask_cors import CORS
 from flask_migrate import Migrate
 from config import Config
-from models import db, Course, Student, StudentCourse
+from models import db, Course, Program, ProgramCourse, Student, StudentCourse
 from services import get_degree_progress, get_recommendations
 from llm import get_advisory_message
 
@@ -148,6 +148,40 @@ def progress():
     
     progress_data = get_degree_progress(student)
     return jsonify(progress_data)
+
+
+# ============ Program Routes ============
+
+@app.route('/api/programs', methods=['GET'])
+def get_programs():
+    query = Program.query
+
+    degree_type = request.args.get('degree_type')
+    if degree_type:
+        query = query.filter(Program.degree_type.ilike(f'%{degree_type}%'))
+
+    department = request.args.get('department')
+    if department:
+        query = query.filter(Program.department.ilike(f'%{department}%'))
+
+    programs = query.order_by(Program.program_name).all()
+    return jsonify({'programs': [p.to_dict() for p in programs]})
+
+
+@app.route('/api/programs/<string:program_id>', methods=['GET'])
+def get_program(program_id):
+    program = Program.query.get_or_404(program_id)
+
+    linked_courses = (
+        db.session.query(Course)
+        .join(ProgramCourse, ProgramCourse.course_id == Course.id)
+        .filter(ProgramCourse.program_id == program_id)
+        .all()
+    )
+
+    result = program.to_dict()
+    result['courses'] = [c.to_dict() for c in linked_courses]
+    return jsonify(result)
 
 
 # ============ Health ============

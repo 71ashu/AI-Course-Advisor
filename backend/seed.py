@@ -1,5 +1,4 @@
 """Seed database with sample courses and a demo student."""
-import sys
 from app import app
 from models import db, Course, Student, StudentCourse
 

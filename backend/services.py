@@ -12,7 +12,7 @@ def get_degree_progress(student):
     for sc in completed + current:
         course = Course.query.get(sc.course_id)
         if course:
-            total_credits += course.credits
+            total_credits += course.units
     
     progress_pct = min((total_credits / REQUIRED_CREDITS) * 100, 100)
     major_credits = int(total_credits * 0.6)  # Approximate major requirement
