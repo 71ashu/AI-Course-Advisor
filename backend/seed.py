@@ -44,6 +44,8 @@ def seed():
             demo = Student(
                 email='alex@demo.edu',
                 name='Alex Johnson',
+                university='Santa Clara University',
+                program_enrolled='MS Computer Science and Engineering',
                 major='Computer Science',
                 year='Junior',
                 interests=['AI', 'Web Development', 'Machine Learning'],

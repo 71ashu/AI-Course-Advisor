@@ -135,6 +135,7 @@ export default function CourseAdvisor({ student, onLogout, onProfileUpdate }) {
         <div>
           <h2 className="text-2xl font-bold text-white">{studentProfile.name}</h2>
           <p className="text-slate-400">{studentProfile.year} • {studentProfile.major}</p>
+          <p className="text-slate-500 text-sm">{studentProfile.university} • {studentProfile.program}</p>
         </div>
       </div>
 

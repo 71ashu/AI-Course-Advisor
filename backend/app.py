@@ -31,8 +31,15 @@ def get_current_student():
 @app.route('/api/auth/register', methods=['POST'])
 def register():
     data = request.json
-    if not data or not data.get('email') or not data.get('password') or not data.get('name'):
-        return jsonify({'error': 'Email, password, and name required'}), 400
+    if (
+        not data
+        or not data.get('email')
+        or not data.get('password')
+        or not data.get('name')
+        or not data.get('university')
+        or not data.get('program')
+    ):
+        return jsonify({'error': 'Email, password, name, university, and program are required'}), 400
     
     if Student.query.filter_by(email=data['email']).first():
         return jsonify({'error': 'Email already registered'}), 409
@@ -40,6 +47,8 @@ def register():
     student = Student(
         email=data['email'],
         name=data['name'],
+        university=data['university'],
+        program_enrolled=data['program'],
         major=data.get('major', 'Computer Science'),
         year=data.get('year', 'Sophomore'),
         interests=data.get('interests', []),
@@ -96,6 +105,8 @@ def profile():
     
     data = request.json
     if data.get('name'): student.name = data['name']
+    if data.get('university'): student.university = data['university']
+    if data.get('program'): student.program_enrolled = data['program']
     if data.get('major'): student.major = data['major']
     if data.get('year'): student.year = data['year']
     if data.get('interests') is not None: student.interests = data['interests']

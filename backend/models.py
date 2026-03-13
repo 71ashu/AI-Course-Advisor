@@ -52,6 +52,8 @@ class Student(db.Model):
     email = db.Column(db.String(120), unique=True, nullable=False)
     password_hash = db.Column(db.String(256))
     name = db.Column(db.String(100), nullable=False)
+    university = db.Column(db.String(200), default='Unknown University')
+    program_enrolled = db.Column(db.String(200), default='Undeclared')
     major = db.Column(db.String(100), default='Computer Science')
     year = db.Column(db.String(20), default='Sophomore')  # Freshman, Sophomore, Junior, Senior
     interests = db.Column(db.JSON, default=list)  # e.g. ["AI", "Web Development"]
@@ -71,6 +73,8 @@ class Student(db.Model):
             'id': self.id,
             'email': self.email,
             'name': self.name,
+            'university': self.university or '',
+            'program': self.program_enrolled or '',
             'major': self.major,
             'year': self.year,
             'interests': self.interests or [],

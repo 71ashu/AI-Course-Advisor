@@ -43,6 +43,8 @@ def get_advisory_message(student, query: str, recommendations: list) -> str:
 
     user_content = (
         f"Student: {student.name}, {student.year} studying {student.major}.\n"
+        f"University: {student.university or 'not specified'}.\n"
+        f"Program: {student.program_enrolled or 'not specified'}.\n"
         f"Interests: {', '.join(student.interests or []) or 'not specified'}.\n"
         f"Career goals: {student.career_goals or 'not specified'}.\n"
         f"Completed courses: {', '.join(completed) or 'none yet'}.\n"
@@ -70,7 +72,7 @@ def get_advisory_message(student, query: str, recommendations: list) -> str:
 def _fallback_message(student, query: str, recommendations: list) -> str:
     count = len(recommendations)
     return (
-        f"Based on your profile as a {student.year} majoring in {student.major}, "
+        f"Based on your profile as a {student.year} in {student.program_enrolled or student.major}, "
         f"I've found {count} course{'s' if count != 1 else ''} that align with your goals. "
         f"Check out the recommendations below!"
     )

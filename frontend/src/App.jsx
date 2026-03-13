@@ -9,12 +9,46 @@ export default function App() {
   const [authMode, setAuthMode] = useState('login'); // 'login' | 'register'
   const [authError, setAuthError] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
+  const [universities, setUniversities] = useState(['Santa Clara University']);
+  const [programs, setPrograms] = useState(['MS Computer Science and Engineering']);
+  const [selectedUniversity, setSelectedUniversity] = useState('Santa Clara University');
 
   useEffect(() => {
     api.me()
       .then(({ student }) => setStudent(student))
       .catch(() => setStudent(null))
       .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    api.getPrograms()
+      .then(({ programs: catalogPrograms }) => {
+        const programRows = Array.isArray(catalogPrograms) ? catalogPrograms : [];
+
+        const uniquePrograms = [...new Set(
+          programRows
+            .map((p) => p.program_name)
+            .filter(Boolean)
+        )];
+
+        const uniqueUniversities = [...new Set(
+          programRows
+            .map((p) => p.university)
+            .filter(Boolean)
+        )];
+
+        if (uniquePrograms.length > 0) {
+          setPrograms(uniquePrograms);
+        }
+
+        if (uniqueUniversities.length > 0) {
+          setUniversities(uniqueUniversities);
+          setSelectedUniversity(uniqueUniversities[0]);
+        }
+      })
+      .catch(() => {
+        // Keep fallback dropdown options if program catalog is unavailable.
+      });
   }, []);
 
   const handleAuth = async (e) => {
@@ -26,6 +60,8 @@ export default function App() {
       email: form.email.value,
       password: form.password.value,
       name: form.name?.value,
+      university: form.university?.value,
+      program: form.program?.value,
       major: form.major?.value || 'Computer Science',
       year: form.year?.value || 'Sophomore',
       interests: (form.interests?.value || '').split(',').map(s => s.trim()).filter(Boolean),
@@ -92,6 +128,34 @@ export default function App() {
               <input name="password" type="password" placeholder="Password" required className="w-full bg-slate-700/50 border border-slate-600/50 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-violet-500/50" />
               {authMode === 'register' && (
                 <>
+                  <select
+                    name="university"
+                    required
+                    value={selectedUniversity}
+                    onChange={(e) => setSelectedUniversity(e.target.value)}
+                    className="w-full bg-slate-700/50 border border-slate-600/50 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-violet-500/50"
+                  >
+                    {universities.map((university) => (
+                      <option key={university} value={university}>
+                        {university}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    name="program"
+                    required
+                    defaultValue=""
+                    className="w-full bg-slate-700/50 border border-slate-600/50 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-violet-500/50"
+                  >
+                    <option value="" disabled>
+                      Select program
+                    </option>
+                    {programs.map((program) => (
+                      <option key={program} value={program}>
+                        {program}
+                      </option>
+                    ))}
+                  </select>
                   <input name="major" placeholder="Major (e.g. Computer Science)" className="w-full bg-slate-700/50 border border-slate-600/50 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-violet-500/50" />
                   <select name="year" className="w-full bg-slate-700/50 border border-slate-600/50 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-violet-500/50">
                     <option value="Freshman">Freshman</option>

@@ -34,6 +34,7 @@ export const api = {
 
   // Courses
   getCourses: () => request('/courses'),
+  getPrograms: () => request('/programs'),
 
   // Advisor
   getRecommendations: (query) => request('/recommend', {
