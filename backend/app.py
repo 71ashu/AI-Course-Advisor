@@ -26,6 +26,68 @@ def get_current_student():
     return None
 
 
+def _normalize_course_input(item):
+    """Normalize course payload from string id or object."""
+    if isinstance(item, str):
+        return item, {}, False
+
+    if not isinstance(item, dict):
+        return None, {}, False
+
+    course_id = item.get('courseId') or item.get('course_id') or item.get('id')
+    updates = {}
+    has_grade_payload = False
+
+    if 'finalScore' in item or 'final_score' in item:
+        updates['final_score'] = item.get('finalScore', item.get('final_score'))
+        has_grade_payload = True
+    if 'finalLetter' in item or 'final_letter' in item:
+        updates['final_letter'] = item.get('finalLetter', item.get('final_letter'))
+        has_grade_payload = True
+    if 'courseGPA' in item or 'course_gpa' in item:
+        updates['course_gpa'] = item.get('courseGPA', item.get('course_gpa'))
+        has_grade_payload = True
+    if 'gradePoints' in item or 'grade_points' in item:
+        updates['grade_points'] = item.get('gradePoints', item.get('grade_points'))
+        has_grade_payload = True
+
+    # Keep old and new schemas aligned when one value is provided.
+    if 'course_gpa' in updates and 'grade_points' not in updates:
+        updates['grade_points'] = updates['course_gpa']
+    if 'grade_points' in updates and 'course_gpa' not in updates:
+        updates['course_gpa'] = updates['grade_points']
+
+    return course_id, updates, has_grade_payload
+
+
+def _sync_student_courses(student_id, status, course_items):
+    """Upsert enrollments for one status while preserving existing grades."""
+    existing = StudentCourse.query.filter_by(student_id=student_id, status=status).all()
+    by_course_id = {row.course_id: row for row in existing}
+
+    desired_ids = set()
+    for item in course_items:
+        course_id, updates, has_grade_payload = _normalize_course_input(item)
+        if not course_id:
+            continue
+        if not Course.query.get(course_id):
+            continue
+
+        desired_ids.add(course_id)
+        enrollment = by_course_id.get(course_id)
+        if not enrollment:
+            enrollment = StudentCourse(student_id=student_id, course_id=course_id, status=status)
+            db.session.add(enrollment)
+
+        if has_grade_payload:
+            for field_name, value in updates.items():
+                setattr(enrollment, field_name, value)
+
+    for row in existing:
+        if row.course_id not in desired_ids:
+            db.session.delete(row)
+
+
 # ============ Auth Routes ============
 
 @app.route('/api/auth/register', methods=['POST'])
@@ -114,15 +176,9 @@ def profile():
     
     # Update courses
     if data.get('completedCourses') is not None:
-        StudentCourse.query.filter_by(student_id=student.id, status='completed').delete()
-        for cid in data['completedCourses']:
-            if Course.query.get(cid):
-                db.session.add(StudentCourse(student_id=student.id, course_id=cid, status='completed'))
+        _sync_student_courses(student.id, 'completed', data['completedCourses'])
     if data.get('currentCourses') is not None:
-        StudentCourse.query.filter_by(student_id=student.id, status='current').delete()
-        for cid in data['currentCourses']:
-            if Course.query.get(cid):
-                db.session.add(StudentCourse(student_id=student.id, course_id=cid, status='current'))
+        _sync_student_courses(student.id, 'current', data['currentCourses'])
     
     db.session.commit()
     return jsonify({'student': student.to_dict()})

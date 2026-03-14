@@ -58,6 +58,7 @@ class Student(db.Model):
     year = db.Column(db.String(20), default='Sophomore')  # Freshman, Sophomore, Junior, Senior
     interests = db.Column(db.JSON, default=list)  # e.g. ["AI", "Web Development"]
     career_goals = db.Column(db.String(500))
+    program_gpa = db.Column(db.Float, default=0.0)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     
     def set_password(self, password):
@@ -79,6 +80,7 @@ class Student(db.Model):
             'year': self.year,
             'interests': self.interests or [],
             'careerGoals': self.career_goals or '',
+            'programGPA': self.program_gpa if self.program_gpa is not None else 0.0,
             'completedCourses': [sc.course_id for sc in completed],
             'currentCourses': [sc.course_id for sc in current]
         }
@@ -130,6 +132,10 @@ class StudentCourse(db.Model):
     student_id = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=False)
     course_id = db.Column(db.String(20), db.ForeignKey('courses.id'), nullable=False)
     status = db.Column(db.String(20), nullable=False)  # 'completed' or 'current'
+    final_score = db.Column(db.Float)
+    final_letter = db.Column(db.String(5))
+    course_gpa = db.Column(db.Float)
+    grade_points = db.Column(db.Float)
     
     student = db.relationship('Student', backref=db.backref('enrollments', lazy='dynamic'))
     course = db.relationship('Course', backref=db.backref('enrollments', lazy='dynamic'))
