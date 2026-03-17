@@ -1,14 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { BookOpen, GraduationCap, TrendingUp, Calendar, Check, X, MessageSquare, Sparkles, User, Target, Brain, LogOut } from 'lucide-react';
+import { TrendingUp, MessageSquare, User, LogOut } from 'lucide-react';
 import { api } from './api';
+import AdvisorTab from './components/course-advisor/AdvisorTab';
+import ProfilePanel from './components/course-advisor/ProfilePanel';
+import ProgressPanel from './components/course-advisor/ProgressPanel';
 
-export default function CourseAdvisor({ student, onLogout, onProfileUpdate }) {
+export default function CourseAdvisor({ student, onLogout }) {
   const [studentProfile, setStudentProfile] = useState(student);
   const [activeTab, setActiveTab] = useState('advisor');
   const [query, setQuery] = useState('');
   const [chatHistory, setChatHistory] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [recommendations, setRecommendations] = useState([]);
   const [degreeProgress, setDegreeProgress] = useState(null);
   const [showProfile, setShowProfile] = useState(false);
   const [progressCoursesTab, setProgressCoursesTab] = useState('current');
@@ -34,13 +36,12 @@ export default function CourseAdvisor({ student, onLogout, onProfileUpdate }) {
     if (!query.trim()) return;
 
     const userMessage = { role: 'user', content: query };
-    setChatHistory(prev => [...prev, userMessage]);
+    setChatHistory((prev) => [...prev, userMessage]);
     setQuery('');
     setIsLoading(true);
 
     try {
       const { recommendations: recs, message } = await api.getRecommendations(query);
-      setRecommendations(recs);
 
       const aiMessage = {
         role: 'assistant',
@@ -48,13 +49,13 @@ export default function CourseAdvisor({ student, onLogout, onProfileUpdate }) {
         recommendations: recs
       };
 
-      setChatHistory(prev => [...prev, aiMessage]);
-    } catch (error) {
+      setChatHistory((prev) => [...prev, aiMessage]);
+    } catch {
       const errorMessage = {
         role: 'assistant',
         content: 'Sorry, I encountered an error. Please try again.'
       };
-      setChatHistory(prev => [...prev, errorMessage]);
+      setChatHistory((prev) => [...prev, errorMessage]);
     } finally {
       setIsLoading(false);
     }
@@ -65,301 +66,6 @@ export default function CourseAdvisor({ student, onLogout, onProfileUpdate }) {
       e.preventDefault();
       handleAskAdvisor();
     }
-  };
-
-  const DifficultyBadge = ({ level }) => {
-    const colors = {
-      beginner: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
-      intermediate: 'bg-amber-500/20 text-amber-300 border-amber-500/30',
-      advanced: 'bg-rose-500/20 text-rose-300 border-rose-500/30'
-    };
-
-    return (
-      <span className={`px-2 py-1 rounded-full text-xs font-medium border ${colors[level] || colors.intermediate}`}>
-        {level}
-      </span>
-    );
-  };
-
-  const CourseCard = ({ course }) => (
-    <div className="group relative bg-gradient-to-br from-slate-800/50 to-slate-900/50 border border-slate-700/50 rounded-xl p-5 hover:border-violet-500/50 transition-all duration-300 hover:shadow-xl hover:shadow-violet-500/10 hover:-translate-y-1">
-      <div className="absolute top-0 right-0 w-32 h-32 bg-violet-500/5 rounded-full blur-3xl group-hover:bg-violet-500/10 transition-all duration-500" />
-
-      <div className="relative">
-        <div className="flex items-start justify-between mb-3">
-          <div>
-            <h3 className="text-xl font-bold text-white mb-1">{course.name}</h3>
-            <p className="text-sm text-violet-400 font-mono">{course.id}</p>
-          </div>
-          <DifficultyBadge level={course.difficulty} />
-        </div>
-
-        <p className="text-slate-300 text-sm mb-4 leading-relaxed">{course.description}</p>
-
-        <div className="flex items-center gap-2 mb-4 text-sm">
-          <div className="flex items-center gap-1 text-slate-400">
-            <BookOpen className="w-4 h-4" />
-            <span>{course.credits} credits</span>
-          </div>
-          {course.eligible !== undefined && (
-            <div className={`flex items-center gap-1 ${course.eligible ? 'text-emerald-400' : 'text-rose-400'}`}>
-              {course.eligible ? <Check className="w-4 h-4" /> : <X className="w-4 h-4" />}
-              <span>{course.eligible ? 'Eligible' : 'Prerequisites needed'}</span>
-            </div>
-          )}
-        </div>
-
-        {course.matchReason && (
-          <div className="bg-violet-500/10 border border-violet-500/20 rounded-lg p-3 mb-3">
-            <div className="flex items-start gap-2">
-              <Sparkles className="w-4 h-4 text-violet-400 mt-0.5 flex-shrink-0" />
-              <p className="text-sm text-violet-200">{course.matchReason}</p>
-            </div>
-          </div>
-        )}
-
-        {course.prerequisites && course.prerequisites.length > 0 && (
-          <div className="text-xs text-slate-500">
-            Prerequisites: {course.prerequisites.join(', ')}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-
-  const ProfilePanel = () => (
-    <div className="bg-gradient-to-br from-slate-800/80 to-slate-900/80 backdrop-blur-sm border border-slate-700/50 rounded-2xl p-6 space-y-6">
-      <div className="flex items-center gap-4">
-        <div className="w-16 h-16 rounded-full bg-gradient-to-br from-violet-500 to-fuchsia-500 flex items-center justify-center text-2xl font-bold text-white">
-          {studentProfile.name.split(' ').map(n => n[0]).join('')}
-        </div>
-        <div>
-          <h2 className="text-2xl font-bold text-white">{studentProfile.name}</h2>
-          <p className="text-slate-400">{studentProfile.year} • {studentProfile.major}</p>
-          <p className="text-slate-500 text-sm">{studentProfile.university} • {studentProfile.program}</p>
-        </div>
-      </div>
-
-      <div className="space-y-4">
-        <div>
-          <div className="flex items-center gap-2 mb-2">
-            <Target className="w-4 h-4 text-violet-400" />
-            <h3 className="text-sm font-semibold text-slate-300">Career Goals</h3>
-          </div>
-          <p className="text-slate-400 text-sm">{studentProfile.careerGoals}</p>
-        </div>
-
-        <div>
-          <div className="flex items-center gap-2 mb-2">
-            <Brain className="w-4 h-4 text-violet-400" />
-            <h3 className="text-sm font-semibold text-slate-300">Interests</h3>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {studentProfile.interests.map((interest, idx) => (
-              <span key={idx} className="px-3 py-1 bg-violet-500/20 border border-violet-500/30 rounded-full text-xs text-violet-300">
-                {interest}
-              </span>
-            ))}
-          </div>
-        </div>
-
-        <div>
-          <div className="flex items-center gap-2 mb-2">
-            <Check className="w-4 h-4 text-violet-400" />
-            <h3 className="text-sm font-semibold text-slate-300">Completed Courses</h3>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {studentProfile.completedCourses.map((course, idx) => (
-              <span key={idx} className="px-2 py-1 bg-emerald-500/10 border border-emerald-500/20 rounded text-xs text-emerald-300 font-mono">
-                {course}
-              </span>
-            ))}
-          </div>
-        </div>
-
-        {studentProfile.currentCourses && studentProfile.currentCourses.length > 0 && (
-          <div>
-            <div className="flex items-center gap-2 mb-2">
-              <Calendar className="w-4 h-4 text-violet-400" />
-              <h3 className="text-sm font-semibold text-slate-300">Current Courses</h3>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {studentProfile.currentCourses.map((course, idx) => (
-                <span key={idx} className="px-2 py-1 bg-amber-500/10 border border-amber-500/20 rounded text-xs text-amber-300 font-mono">
-                  {course}
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-
-  const ProgressPanel = () => {
-    if (!degreeProgress) return null;
-
-    const progressWidth = `${degreeProgress.progressPercentage}%`;
-    const completedCourses = degreeProgress.completedCourses || [];
-    const currentCourses = degreeProgress.currentCourses || [];
-    const allCourses = [...currentCourses, ...completedCourses];
-    const hasDetailedCourses = completedCourses.length > 0 || currentCourses.length > 0;
-
-    const renderProgressCourse = (course, idx, status) => {
-      const courseId = course.courseId || course.course_id || course.id || `course-${idx}`;
-      const courseName = course.courseName || course.course_name || course.name || courseId;
-      const units = course.units;
-      const finalLetter = course.finalLetter || course.final_letter;
-      const finalScore = course.finalScore ?? course.final_score;
-      const courseGPA = course.courseGPA ?? course.course_gpa ?? course.gradePoints ?? course.grade_points;
-      const statusStyles =
-        status === 'completed'
-          ? 'border-emerald-500/30 bg-emerald-500/10'
-          : 'border-amber-500/30 bg-amber-500/10';
-
-      return (
-        <div key={`${status}-${courseId}-${idx}`} className={`rounded-lg border p-3 ${statusStyles}`}>
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <div className="text-sm font-semibold text-white">{courseName}</div>
-              <div className="text-xs text-slate-300 font-mono">{courseId}</div>
-            </div>
-            {typeof units === 'number' && (
-              <span className="text-xs text-slate-300">{units} units</span>
-            )}
-          </div>
-          {(finalLetter || finalScore != null || courseGPA != null) && (
-            <div className="mt-2 flex flex-wrap gap-2 text-xs">
-              {finalLetter && (
-                <span className="px-2 py-1 rounded bg-slate-800/60 border border-slate-600/50 text-slate-200">
-                  Grade: {finalLetter}
-                </span>
-              )}
-              {finalScore != null && (
-                <span className="px-2 py-1 rounded bg-slate-800/60 border border-slate-600/50 text-slate-200">
-                  Score: {finalScore}
-                </span>
-              )}
-              {courseGPA != null && (
-                <span className="px-2 py-1 rounded bg-slate-800/60 border border-slate-600/50 text-slate-200">
-                  Course GPA: {Number(courseGPA).toFixed(2)}
-                </span>
-              )}
-            </div>
-          )}
-        </div>
-      );
-    };
-
-    return (
-      <div className="bg-gradient-to-br from-slate-800/80 to-slate-900/80 backdrop-blur-sm border border-slate-700/50 rounded-2xl p-6">
-        <div className="flex items-center gap-3 mb-6">
-          <GraduationCap className="w-6 h-6 text-violet-400" />
-          <h2 className="text-2xl font-bold text-white">Degree Progress</h2>
-        </div>
-
-        <div className="mb-6">
-          <div className="flex justify-between items-baseline mb-2">
-            <span className="text-sm text-slate-400">Overall Progress</span>
-            <span className="text-2xl font-bold text-white">{degreeProgress.progressPercentage.toFixed(1)}%</span>
-          </div>
-          <div className="h-3 bg-slate-700/50 rounded-full overflow-hidden">
-            <div
-              className="h-full bg-gradient-to-r from-violet-500 to-fuchsia-500 rounded-full transition-all duration-1000 ease-out"
-              style={{ width: progressWidth }}
-            />
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-4">
-          <div className="bg-slate-700/30 rounded-xl p-4 border border-slate-600/30">
-            <div className="text-3xl font-bold text-white mb-1">{degreeProgress.totalCredits}</div>
-            <div className="text-sm text-slate-400">Credits Earned</div>
-          </div>
-          <div className="bg-slate-700/30 rounded-xl p-4 border border-slate-600/30">
-            <div className="text-3xl font-bold text-white mb-1">{degreeProgress.requiredCredits - degreeProgress.totalCredits}</div>
-            <div className="text-sm text-slate-400">Credits Remaining</div>
-          </div>
-          <div className="bg-slate-700/30 rounded-xl p-4 border border-slate-600/30">
-            <div className="text-3xl font-bold text-white mb-1">{degreeProgress.majorCredits}</div>
-            <div className="text-sm text-slate-400">Major Credits</div>
-          </div>
-          <div className="bg-slate-700/30 rounded-xl p-4 border border-slate-600/30">
-            <div className="text-3xl font-bold text-white mb-1">{degreeProgress.completedCoursesCount}</div>
-            <div className="text-sm text-slate-400">Courses Completed</div>
-          </div>
-        </div>
-
-        {hasDetailedCourses && (
-          <div className="mt-6">
-            <div className="flex gap-2 mb-4 bg-slate-800/50 p-1.5 rounded-xl border border-slate-700/50 w-fit">
-              <button
-                onClick={() => setProgressCoursesTab('current')}
-                className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-300 ${
-                  progressCoursesTab === 'current'
-                    ? 'bg-amber-500/80 text-white shadow-lg shadow-amber-500/20'
-                    : 'text-slate-300 hover:text-white'
-                }`}
-              >
-                <Calendar className="w-4 h-4 inline mr-2" />
-                Current Courses
-              </button>
-              <button
-                onClick={() => setProgressCoursesTab('completed')}
-                className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-300 ${
-                  progressCoursesTab === 'completed'
-                    ? 'bg-emerald-500/80 text-white shadow-lg shadow-emerald-500/20'
-                    : 'text-slate-300 hover:text-white'
-                }`}
-              >
-                <Check className="w-4 h-4 inline mr-2" />
-                Completed Courses
-              </button>
-              <button
-                onClick={() => setProgressCoursesTab('all')}
-                className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-300 ${
-                  progressCoursesTab === 'all'
-                    ? 'bg-violet-500/80 text-white shadow-lg shadow-violet-500/20'
-                    : 'text-slate-300 hover:text-white'
-                }`}
-              >
-                <BookOpen className="w-4 h-4 inline mr-2" />
-                All Courses
-              </button>
-            </div>
-
-            {progressCoursesTab === 'completed' ? (
-              <div className="space-y-2">
-                {completedCourses.length > 0 ? (
-                  completedCourses.map((course, idx) => renderProgressCourse(course, idx, 'completed'))
-                ) : (
-                  <div className="text-sm text-slate-400">No completed courses yet.</div>
-                )}
-              </div>
-            ) : progressCoursesTab === 'all' ? (
-              <div className="space-y-2">
-                {allCourses.length > 0 ? (
-                  allCourses.map((course, idx) => {
-                    const status = (course.status || '').toLowerCase() === 'completed' ? 'completed' : 'current';
-                    return renderProgressCourse(course, idx, status);
-                  })
-                ) : (
-                  <div className="text-sm text-slate-400">No courses yet.</div>
-                )}
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {currentCourses.length > 0 ? (
-                  currentCourses.map((course, idx) => renderProgressCourse(course, idx, 'current'))
-                ) : (
-                  <div className="text-sm text-slate-400">No current courses.</div>
-                )}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-    );
   };
 
   return (
@@ -399,7 +105,7 @@ export default function CourseAdvisor({ student, onLogout, onProfileUpdate }) {
 
         {showProfile && (
           <div className="mb-8">
-            <ProfilePanel />
+            <ProfilePanel studentProfile={studentProfile} />
           </div>
         )}
 
@@ -429,124 +135,23 @@ export default function CourseAdvisor({ student, onLogout, onProfileUpdate }) {
         </div>
 
         {activeTab === 'advisor' && (
-          <div className="space-y-6">
-            <div className="bg-gradient-to-br from-slate-800/50 to-slate-900/50 backdrop-blur-sm border border-slate-700/50 rounded-2xl p-6 min-h-[400px] max-h-[500px] overflow-y-auto">
-              {chatHistory.length === 0 ? (
-                <div className="h-full flex flex-col items-center justify-center text-center">
-                  <div className="w-20 h-20 bg-gradient-to-br from-violet-500/20 to-fuchsia-500/20 rounded-full flex items-center justify-center mb-6">
-                    <Brain className="w-10 h-10 text-violet-400" />
-                  </div>
-                  <h3 className="text-2xl font-bold mb-2">Ask me anything!</h3>
-                  <p className="text-slate-400 max-w-md">
-                    I can help you plan your courses, check prerequisites, explore career paths, and optimize your academic journey.
-                  </p>
-                  <div className="mt-6 flex flex-wrap gap-2 justify-center">
-                    <button
-                      onClick={() => setQuery("What courses should I take next semester?")}
-                      className="px-4 py-2 bg-slate-700/50 hover:bg-slate-700 rounded-lg text-sm border border-slate-600/50 transition-colors"
-                    >
-                      Next semester courses?
-                    </button>
-                    <button
-                      onClick={() => setQuery("What are the best ML courses for me?")}
-                      className="px-4 py-2 bg-slate-700/50 hover:bg-slate-700 rounded-lg text-sm border border-slate-600/50 transition-colors"
-                    >
-                      ML course recommendations
-                    </button>
-                    <button
-                      onClick={() => setQuery("Am I on track to graduate on time?")}
-                      className="px-4 py-2 bg-slate-700/50 hover:bg-slate-700 rounded-lg text-sm border border-slate-600/50 transition-colors"
-                    >
-                      Graduation timeline?
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {chatHistory.map((message, idx) => (
-                    <div
-                      key={idx}
-                      className={`flex gap-3 ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
-                    >
-                      {message.role === 'assistant' && (
-                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-violet-500 to-fuchsia-500 flex items-center justify-center flex-shrink-0">
-                          <Brain className="w-5 h-5" />
-                        </div>
-                      )}
-                      <div
-                        className={`max-w-2xl px-4 py-3 rounded-2xl ${
-                          message.role === 'user'
-                            ? 'bg-violet-500 text-white'
-                            : 'bg-slate-700/50 text-slate-200'
-                        }`}
-                      >
-                        {message.content}
-                      </div>
-                      {message.role === 'user' && (
-                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center flex-shrink-0">
-                          <User className="w-5 h-5" />
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                  {isLoading && (
-                    <div className="flex gap-3">
-                      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-violet-500 to-fuchsia-500 flex items-center justify-center">
-                        <Brain className="w-5 h-5" />
-                      </div>
-                      <div className="bg-slate-700/50 px-4 py-3 rounded-2xl">
-                        <div className="flex gap-1">
-                          <div className="w-2 h-2 bg-violet-400 rounded-full animate-bounce" />
-                          <div className="w-2 h-2 bg-violet-400 rounded-full animate-bounce delay-100" />
-                          <div className="w-2 h-2 bg-violet-400 rounded-full animate-bounce delay-200" />
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-
-            <div className="bg-gradient-to-br from-slate-800/50 to-slate-900/50 backdrop-blur-sm border border-slate-700/50 rounded-2xl p-4">
-              <div className="flex gap-3">
-                <input
-                  type="text"
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  onKeyPress={handleKeyPress}
-                  placeholder="Ask about courses, prerequisites, career paths..."
-                  className="flex-1 bg-slate-700/50 border border-slate-600/50 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-violet-500/50 focus:border-transparent"
-                  disabled={isLoading}
-                />
-                <button
-                  onClick={handleAskAdvisor}
-                  disabled={isLoading || !query.trim()}
-                  className="px-6 py-3 bg-gradient-to-r from-violet-500 to-fuchsia-500 hover:from-violet-600 hover:to-fuchsia-600 rounded-xl font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 shadow-lg shadow-violet-500/30"
-                >
-                  {isLoading ? 'Thinking...' : 'Ask'}
-                </button>
-              </div>
-            </div>
-
-            {recommendations.length > 0 && (
-              <div>
-                <h2 className="text-2xl font-bold mb-6 flex items-center gap-2">
-                  <Sparkles className="w-6 h-6 text-violet-400" />
-                  Recommended Courses
-                </h2>
-                <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {recommendations.map((course) => (
-                    <CourseCard key={course.id} course={course} />
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
+          <AdvisorTab
+            chatHistory={chatHistory}
+            isLoading={isLoading}
+            query={query}
+            setQuery={setQuery}
+            handleKeyPress={handleKeyPress}
+            handleAskAdvisor={handleAskAdvisor}
+          />
         )}
 
         {activeTab === 'progress' && (
           <div>
-            <ProgressPanel />
+            <ProgressPanel
+              degreeProgress={degreeProgress}
+              progressCoursesTab={progressCoursesTab}
+              setProgressCoursesTab={setProgressCoursesTab}
+            />
           </div>
         )}
       </div>
