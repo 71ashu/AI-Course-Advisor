@@ -69,7 +69,7 @@ export default function AdvisorTab({
                       <div className="text-sm font-semibold text-violet-300 px-1">Recommended Courses</div>
                       <div className="grid gap-3 md:grid-cols-2">
                         {message.recommendations.map((course) => (
-                          <CourseCard key={`${idx}-${course.id}`} course={course} />
+                          <CourseCard key={`${idx}-${course.id || course.course_number}`} course={course} />
                         ))}
                       </div>
                     </div>
