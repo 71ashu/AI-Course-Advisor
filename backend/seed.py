@@ -41,6 +41,10 @@ GRADE_BY_COURSE = {
     "PHY101": ("B", 3.0, 84.0),
 }
 
+SPECIAL_STUDENT_PREFILLS = {
+    # Add per-user seed prefills here if needed.
+}
+
 
 def _calculate_program_gpa(student):
     completed = StudentCourse.query.filter_by(student_id=student.id, status='completed').all()
@@ -69,20 +73,42 @@ def prefill_student_grades(email):
         print(f'No student found for {email}; skipping prefill.')
         return
 
-    enrollments = StudentCourse.query.filter_by(student_id=student.id).all()
-    if not enrollments:
-        for course_id in ['CS101', 'CS201', 'MATH100', 'MATH200', 'ENG101']:
+    special_prefill = SPECIAL_STUDENT_PREFILLS.get(email)
+    if special_prefill:
+        for field_name, field_value in special_prefill['profile'].items():
+            setattr(student, field_name, field_value)
+
+        StudentCourse.query.filter_by(student_id=student.id).delete()
+
+        for course_id in special_prefill['completed_courses']:
             if db.session.get(Course, course_id):
                 db.session.add(
                     StudentCourse(student_id=student.id, course_id=course_id, status='completed')
                 )
-        if db.session.get(Course, 'PHY101'):
-            db.session.add(StudentCourse(student_id=student.id, course_id='PHY101', status='current'))
+        for course_id in special_prefill['current_courses']:
+            if db.session.get(Course, course_id):
+                db.session.add(
+                    StudentCourse(student_id=student.id, course_id=course_id, status='current')
+                )
         db.session.flush()
         enrollments = StudentCourse.query.filter_by(student_id=student.id).all()
+        grade_by_course = special_prefill['grades']
+    else:
+        enrollments = StudentCourse.query.filter_by(student_id=student.id).all()
+        if not enrollments:
+            for course_id in ['CS101', 'CS201', 'MATH100', 'MATH200', 'ENG101']:
+                if db.session.get(Course, course_id):
+                    db.session.add(
+                        StudentCourse(student_id=student.id, course_id=course_id, status='completed')
+                    )
+            if db.session.get(Course, 'PHY101'):
+                db.session.add(StudentCourse(student_id=student.id, course_id='PHY101', status='current'))
+            db.session.flush()
+            enrollments = StudentCourse.query.filter_by(student_id=student.id).all()
+        grade_by_course = GRADE_BY_COURSE
 
     for enrollment in enrollments:
-        grade_tuple = GRADE_BY_COURSE.get(enrollment.course_id)
+        grade_tuple = grade_by_course.get(enrollment.course_id)
         if not grade_tuple:
             continue
         enrollment.final_letter = grade_tuple[0]
@@ -123,8 +149,6 @@ def seed():
             db.session.add(StudentCourse(student_id=demo.id, course_id='PHY101', status='current'))
         
         db.session.commit()
-        # Optional prefill target user if they are already registered.
-        prefill_student_grades('71ashu@gmail.com')
         print('Database seeded successfully!')
         print('Demo login: alex@demo.edu / demo123')
 

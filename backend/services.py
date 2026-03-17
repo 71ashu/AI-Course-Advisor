@@ -1,5 +1,6 @@
 """Business logic for recommendations and degree progress."""
-from models import Course, Student, StudentCourse, db
+import re
+from models import Course, Program, ProgramCourse, Student, StudentCourse, db
 
 REQUIRED_CREDITS = 120
 
@@ -17,6 +18,73 @@ def _serialize_progress_course(enrollment):
         'finalLetter': enrollment.final_letter,
         'courseGPA': enrollment.course_gpa if enrollment.course_gpa is not None else enrollment.grade_points,
     }
+
+
+def _normalize_program_text(value):
+    normalized = (value or '').lower().replace('&', ' and ')
+    normalized = re.sub(r'\band\b', ' ', normalized)
+    return re.sub(r'[^a-z0-9]+', '', normalized)
+
+
+def _resolve_program_for_student(student):
+    program_text = (student.program_enrolled or '').strip()
+    if not program_text:
+        return None
+
+    direct_match = Program.query.filter(
+        Program.program_name.ilike(program_text)
+    ).first()
+    if direct_match:
+        return direct_match
+
+    normalized_target = _normalize_program_text(program_text)
+    for program in Program.query.all():
+        normalized_name = _normalize_program_text(program.program_name)
+        normalized_id = _normalize_program_text(program.program_id)
+        if normalized_target and (
+            normalized_target in normalized_name
+            or normalized_name in normalized_target
+            or normalized_target in normalized_id
+            or normalized_id in normalized_target
+        ):
+            return program
+    return None
+
+
+def _build_program_requirement_items(program):
+    if not program:
+        return []
+
+    requirements = []
+    if program.total_units_required:
+        requirements.append(f"{program.total_units_required} total units required")
+    if program.minimum_gpa:
+        requirements.append(f"Minimum GPA: {program.minimum_gpa:.2f}")
+
+    linked_courses = (
+        db.session.query(Course)
+        .join(ProgramCourse, ProgramCourse.course_id == Course.id)
+        .filter(ProgramCourse.program_id == program.program_id)
+        .all()
+    )
+    core_courses = [c for c in linked_courses if (c.level or '').lower() == 'graduate core']
+    core_units = sum((c.units or 0) for c in core_courses)
+
+    if core_courses:
+        requirements.append(
+            f"{len(core_courses)} graduate core courses ({core_units} units)"
+        )
+        elective_units = max((program.total_units_required or 0) - core_units, 0)
+        if elective_units:
+            requirements.append(f"At least {elective_units} units of graduate electives")
+
+    nested_requirements = program.requirements or {}
+    if isinstance(nested_requirements, dict):
+        for key, value in nested_requirements.items():
+            if isinstance(value, (str, int, float)) and value not in ('', None):
+                requirements.append(f"{str(key).replace('_', ' ').title()}: {value}")
+
+    return requirements
 
 
 def calculate_program_gpa(student):
@@ -50,9 +118,16 @@ def get_degree_progress(student):
         course = Course.query.get(sc.course_id)
         if course:
             total_credits += course.units
-    
-    progress_pct = min((total_credits / REQUIRED_CREDITS) * 100, 100)
-    major_credits = int(total_credits * 0.6)  # Approximate major requirement
+
+    matched_program = _resolve_program_for_student(student)
+    required_credits = (
+        matched_program.total_units_required
+        if matched_program and matched_program.total_units_required
+        else REQUIRED_CREDITS
+    )
+    progress_pct = min((total_credits / required_credits) * 100, 100) if required_credits else 0
+    major_credits = total_credits if matched_program else int(total_credits * 0.6)
+    requirement_items = _build_program_requirement_items(matched_program)
     computed_gpa = calculate_program_gpa(student)
     completed_with_grades = [
         data for data in (_serialize_progress_course(sc) for sc in completed) if data is not None
@@ -63,11 +138,14 @@ def get_degree_progress(student):
     
     return {
         'totalCredits': total_credits,
-        'requiredCredits': REQUIRED_CREDITS,
+        'requiredCredits': required_credits,
         'progressPercentage': round(progress_pct, 1),
         'majorCredits': major_credits,
         'completedCoursesCount': len(completed),
         'programGPA': student.program_gpa if student.program_gpa is not None else computed_gpa,
+        'programName': matched_program.program_name if matched_program else (student.program_enrolled or ''),
+        'programDegreeType': matched_program.degree_type if matched_program else '',
+        'programRequirementItems': requirement_items,
         'completedCourses': completed_with_grades,
         'currentCourses': current_with_grades,
     }

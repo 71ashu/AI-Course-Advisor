@@ -4,10 +4,12 @@ export default function ProgressPanel({ degreeProgress, progressCoursesTab, setP
   if (!degreeProgress) return null;
 
   const progressWidth = `${degreeProgress.progressPercentage}%`;
+  const creditsRemaining = Math.max((degreeProgress.requiredCredits || 0) - (degreeProgress.totalCredits || 0), 0);
   const completedCourses = degreeProgress.completedCourses || [];
   const currentCourses = degreeProgress.currentCourses || [];
   const allCourses = [...currentCourses, ...completedCourses];
   const hasDetailedCourses = completedCourses.length > 0 || currentCourses.length > 0;
+  const requirementItems = degreeProgress.programRequirementItems || [];
 
   const renderProgressCourse = (course, idx, status) => {
     const courseId = course.courseId || course.course_id || course.id || `course-${idx}`;
@@ -59,7 +61,15 @@ export default function ProgressPanel({ degreeProgress, progressCoursesTab, setP
     <div className="bg-gradient-to-br from-slate-800/80 to-slate-900/80 backdrop-blur-sm border border-slate-700/50 rounded-2xl p-6">
       <div className="flex items-center gap-3 mb-6">
         <GraduationCap className="w-6 h-6 text-violet-400" />
-        <h2 className="text-2xl font-bold text-white">Degree Progress</h2>
+        <div>
+          <h2 className="text-2xl font-bold text-white">Degree Progress</h2>
+          {degreeProgress.programName && (
+            <p className="text-sm text-slate-400">
+              {degreeProgress.programName}
+              {degreeProgress.programDegreeType ? ` (${degreeProgress.programDegreeType})` : ''}
+            </p>
+          )}
+        </div>
       </div>
 
       <div className="mb-6">
@@ -81,7 +91,7 @@ export default function ProgressPanel({ degreeProgress, progressCoursesTab, setP
           <div className="text-sm text-slate-400">Credits Earned</div>
         </div>
         <div className="bg-slate-700/30 rounded-xl p-4 border border-slate-600/30">
-          <div className="text-3xl font-bold text-white mb-1">{degreeProgress.requiredCredits - degreeProgress.totalCredits}</div>
+          <div className="text-3xl font-bold text-white mb-1">{creditsRemaining}</div>
           <div className="text-sm text-slate-400">Credits Remaining</div>
         </div>
         <div className="bg-slate-700/30 rounded-xl p-4 border border-slate-600/30">
@@ -93,6 +103,19 @@ export default function ProgressPanel({ degreeProgress, progressCoursesTab, setP
           <div className="text-sm text-slate-400">Courses Completed</div>
         </div>
       </div>
+
+      {requirementItems.length > 0 && (
+        <div className="mt-6 bg-slate-700/30 rounded-xl p-4 border border-slate-600/30">
+          <h3 className="text-sm font-semibold text-slate-200 mb-3">Program Requirements</h3>
+          <div className="space-y-2">
+            {requirementItems.map((item, idx) => (
+              <div key={`${item}-${idx}`} className="text-sm text-slate-300">
+                - {item}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {hasDetailedCourses && (
         <div className="mt-6">
