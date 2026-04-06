@@ -1,6 +1,8 @@
 """
 AI Course Advisor - Full Stack Backend
-Flask API with PostgreSQL database, authentication, and intelligent recommendations
+Flask API with PostgreSQL database, authentication, and intelligent recommendations.
+Features: knowledge graph, collaborative filtering, GPA prediction, job market alignment,
+explainability, and cold start handling.
 """
 
 from flask import Flask, request, jsonify, session
@@ -9,7 +11,8 @@ from flask_migrate import Migrate
 from config import Config
 from models import db, Course, Program, ProgramCourse, Student, StudentCourse
 from services import get_degree_progress, get_recommendations
-from llm import get_advisory_message
+from llm import get_advisory_message, extract_job_skills
+from knowledge_graph import get_path_to_course, get_graph_summary
 
 app = Flask(__name__)
 app.config.from_object(Config)
@@ -51,7 +54,6 @@ def _normalize_course_input(item):
         updates['grade_points'] = item.get('gradePoints', item.get('grade_points'))
         has_grade_payload = True
 
-    # Keep old and new schemas aligned when one value is provided.
     if 'course_gpa' in updates and 'grade_points' not in updates:
         updates['grade_points'] = updates['course_gpa']
     if 'grade_points' in updates and 'course_gpa' not in updates:
@@ -114,7 +116,8 @@ def register():
         major=data.get('major', 'Computer Science'),
         year=data.get('year', 'Sophomore'),
         interests=data.get('interests', []),
-        career_goals=data.get('careerGoals', '')
+        career_goals=data.get('careerGoals', ''),
+        target_job_title=data.get('targetJobTitle', ''),
     )
     student.set_password(data['password'])
     db.session.add(student)
@@ -173,8 +176,8 @@ def profile():
     if data.get('year'): student.year = data['year']
     if data.get('interests') is not None: student.interests = data['interests']
     if data.get('careerGoals') is not None: student.career_goals = data['careerGoals']
+    if data.get('targetJobTitle') is not None: student.target_job_title = data['targetJobTitle']
     
-    # Update courses
     if data.get('completedCourses') is not None:
         _sync_student_courses(student.id, 'completed', data['completedCourses'])
     if data.get('currentCourses') is not None:
@@ -202,7 +205,17 @@ def recommend():
     
     data = request.json or {}
     query = data.get('query', '')
-    recommendations = get_recommendations(student, query)
+    target_job_title = data.get('targetJobTitle') or student.target_job_title
+
+    job_skills = None
+    if target_job_title:
+        job_skills = extract_job_skills(target_job_title)
+
+    recommendations = get_recommendations(
+        student, query,
+        target_job_title=target_job_title,
+        job_skills=job_skills,
+    )
     message = get_advisory_message(student, query, recommendations)
     return jsonify({'recommendations': recommendations, 'message': message})
 
@@ -215,6 +228,80 @@ def progress():
     
     progress_data = get_degree_progress(student)
     return jsonify(progress_data)
+
+
+# ============ Prerequisite Graph Routes ============
+
+@app.route('/api/prerequisite-path', methods=['GET'])
+def prerequisite_path():
+    target = request.args.get('target')
+    if not target:
+        return jsonify({'error': 'target query parameter is required'}), 400
+
+    course = Course.query.get(target)
+    if not course:
+        return jsonify({'error': f'Course {target} not found'}), 404
+
+    student = get_current_student()
+    completed_ids = set()
+    if student:
+        completed_ids = set(
+            sc.course_id for sc in
+            StudentCourse.query.filter_by(student_id=student.id, status='completed').all()
+        )
+
+    path = get_path_to_course(completed_ids, target)
+    path_details = []
+    for cid in path:
+        c = Course.query.get(cid)
+        if c:
+            path_details.append({
+                'courseId': c.id,
+                'courseName': c.name,
+                'completed': cid in completed_ids,
+            })
+
+    return jsonify({'target': target, 'path': path_details})
+
+
+@app.route('/api/prerequisite-graph', methods=['GET'])
+def prerequisite_graph():
+    return jsonify(get_graph_summary())
+
+
+# ============ Onboarding Routes ============
+
+@app.route('/api/onboarding', methods=['POST'])
+def onboarding():
+    """Process onboarding quiz answers for cold-start users."""
+    student = get_current_student()
+    if not student:
+        return jsonify({'error': 'Not authenticated'}), 401
+
+    data = request.json or {}
+
+    interests = data.get('interests', [])
+    if interests:
+        student.interests = interests
+
+    career_goals = data.get('careerGoals', '')
+    if career_goals:
+        student.career_goals = career_goals
+
+    target_job = data.get('targetJobTitle', '')
+    if target_job:
+        student.target_job_title = target_job
+
+    experience_level = data.get('experienceLevel', '')
+    if experience_level:
+        existing_interests = student.interests or []
+        if experience_level == 'beginner' and 'Programming Fundamentals' not in existing_interests:
+            student.interests = existing_interests + ['Programming Fundamentals']
+
+    student.onboarding_completed = True
+    db.session.commit()
+
+    return jsonify({'student': student.to_dict()})
 
 
 # ============ Program Routes ============

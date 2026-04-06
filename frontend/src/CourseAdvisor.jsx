@@ -4,19 +4,26 @@ import { api } from './api';
 import AdvisorTab from './components/course-advisor/AdvisorTab';
 import ProfilePanel from './components/course-advisor/ProfilePanel';
 import ProgressPanel from './components/course-advisor/ProgressPanel';
+import OnboardingQuiz from './components/course-advisor/OnboardingQuiz';
 
 export default function CourseAdvisor({ student, onLogout }) {
   const [studentProfile, setStudentProfile] = useState(student);
   const [activeTab, setActiveTab] = useState('advisor');
   const [query, setQuery] = useState('');
+  const [targetJobTitle, setTargetJobTitle] = useState(student?.targetJobTitle || '');
   const [chatHistory, setChatHistory] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [degreeProgress, setDegreeProgress] = useState(null);
   const [showProfile, setShowProfile] = useState(false);
   const [progressCoursesTab, setProgressCoursesTab] = useState('current');
 
+  const isColdStart = !studentProfile?.onboardingCompleted
+    && (studentProfile?.completedCourses?.length || 0) === 0
+    && (studentProfile?.interests?.length || 0) === 0;
+
   useEffect(() => {
     setStudentProfile(student);
+    setTargetJobTitle(student?.targetJobTitle || '');
   }, [student]);
 
   useEffect(() => {
@@ -32,6 +39,19 @@ export default function CourseAdvisor({ student, onLogout }) {
     }
   };
 
+  const handleOnboardingComplete = async (answers) => {
+    setIsLoading(true);
+    try {
+      const { student: updated } = await api.submitOnboarding(answers);
+      setStudentProfile(updated);
+      setTargetJobTitle(updated.targetJobTitle || '');
+    } catch (err) {
+      console.error('Onboarding failed:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleAskAdvisor = async () => {
     if (!query.trim()) return;
 
@@ -41,7 +61,10 @@ export default function CourseAdvisor({ student, onLogout }) {
     setIsLoading(true);
 
     try {
-      const { recommendations: recs, message } = await api.getRecommendations(query);
+      const { recommendations: recs, message } = await api.getRecommendations(
+        query,
+        targetJobTitle || null
+      );
 
       const aiMessage = {
         role: 'assistant',
@@ -67,6 +90,26 @@ export default function CourseAdvisor({ student, onLogout }) {
       handleAskAdvisor();
     }
   };
+
+  if (isColdStart) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-violet-950 text-white font-sans">
+        <div className="fixed inset-0 overflow-hidden pointer-events-none">
+          <div className="absolute top-20 left-20 w-96 h-96 bg-violet-600/10 rounded-full blur-3xl animate-pulse" />
+          <div className="absolute bottom-20 right-20 w-96 h-96 bg-fuchsia-600/10 rounded-full blur-3xl animate-pulse delay-1000" />
+        </div>
+        <div className="relative z-10 max-w-7xl mx-auto px-6 py-8">
+          <header className="mb-12 text-center">
+            <h1 className="text-5xl font-black mb-2 bg-gradient-to-r from-violet-400 via-fuchsia-400 to-violet-400 bg-clip-text text-transparent">
+              AI Course Advisor
+            </h1>
+            <p className="text-slate-400 text-lg">Welcome, {studentProfile?.name}!</p>
+          </header>
+          <OnboardingQuiz onComplete={handleOnboardingComplete} isLoading={isLoading} />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-violet-950 text-white font-sans">
@@ -142,6 +185,8 @@ export default function CourseAdvisor({ student, onLogout }) {
             setQuery={setQuery}
             handleKeyPress={handleKeyPress}
             handleAskAdvisor={handleAskAdvisor}
+            targetJobTitle={targetJobTitle}
+            setTargetJobTitle={setTargetJobTitle}
           />
         )}
 

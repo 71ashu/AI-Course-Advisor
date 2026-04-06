@@ -1,4 +1,5 @@
-import { Brain, User } from 'lucide-react';
+import { useState } from 'react';
+import { Brain, User, Briefcase, ChevronDown, ChevronUp } from 'lucide-react';
 import CourseCard from './CourseCard';
 
 export default function AdvisorTab({
@@ -7,8 +8,12 @@ export default function AdvisorTab({
   query,
   setQuery,
   handleKeyPress,
-  handleAskAdvisor
+  handleAskAdvisor,
+  targetJobTitle,
+  setTargetJobTitle,
 }) {
+  const [showCareerInput, setShowCareerInput] = useState(!!targetJobTitle);
+
   return (
     <div className="space-y-6">
       <div className="bg-gradient-to-br from-slate-800/50 to-slate-900/50 backdrop-blur-sm border border-slate-700/50 rounded-2xl p-6 min-h-[400px] max-h-[500px] overflow-y-auto">
@@ -100,7 +105,26 @@ export default function AdvisorTab({
         )}
       </div>
 
-      <div className="bg-gradient-to-br from-slate-800/50 to-slate-900/50 backdrop-blur-sm border border-slate-700/50 rounded-2xl p-4">
+      <div className="bg-gradient-to-br from-slate-800/50 to-slate-900/50 backdrop-blur-sm border border-slate-700/50 rounded-2xl p-4 space-y-3">
+        <button
+          onClick={() => setShowCareerInput(!showCareerInput)}
+          className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-slate-200 transition-colors"
+        >
+          <Briefcase className="w-3.5 h-3.5" />
+          <span>Align with career goal</span>
+          {showCareerInput ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+        </button>
+
+        {showCareerInput && (
+          <input
+            type="text"
+            value={targetJobTitle || ''}
+            onChange={(e) => setTargetJobTitle(e.target.value)}
+            placeholder="Target job title (e.g. ML Engineer, Full-Stack Developer)"
+            className="w-full bg-slate-700/50 border border-slate-600/50 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-amber-500/50 focus:border-transparent"
+          />
+        )}
+
         <div className="flex gap-3">
           <input
             type="text"

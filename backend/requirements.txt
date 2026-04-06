@@ -5,3 +5,5 @@ flask-migrate==4.0.7
 python-dotenv==1.0.0
 psycopg2-binary==2.9.11
 openai>=1.0.0
+networkx>=3.2
+numpy>=1.26.0

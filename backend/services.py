@@ -1,6 +1,13 @@
-"""Business logic for recommendations and degree progress."""
+"""Business logic for recommendations and degree progress.
+
+Integrates: knowledge graph, collaborative filtering, GPA prediction,
+job market alignment, and structured explainability.
+"""
 import re
 from models import Course, Program, ProgramCourse, Student, StudentCourse, db
+from knowledge_graph import get_reachable_courses, get_path_to_course
+from collaborative import get_collaborative_scores
+from grade_predictor import predict_grade
 
 REQUIRED_CREDITS = 120
 
@@ -151,8 +158,17 @@ def get_degree_progress(student):
     }
 
 
-def get_recommendations(student, query=''):
-    """Get course recommendations based on student profile and query."""
+def get_recommendations(student, query='', target_job_title=None, job_skills=None):
+    """Get course recommendations with multi-signal scoring and structured explanations.
+
+    Scoring signals:
+      - Prerequisite eligibility (knowledge graph)          +50
+      - Interest/topic match                                +30
+      - Collaborative filtering (peer enrollment patterns)  +25 * ratio
+      - Job market skill alignment                          +15 per skill
+      - Query keyword bonuses                               +10..40
+      - GPA prediction penalty (if course would hurt GPA)   -10
+    """
     completed_ids = set(
         sc.course_id for sc in 
         StudentCourse.query.filter_by(student_id=student.id, status='completed').all()
@@ -162,64 +178,144 @@ def get_recommendations(student, query=''):
         StudentCourse.query.filter_by(student_id=student.id, status='current').all()
     )
     taken = completed_ids | current_ids
-    
-    interests = set((student.interests or []))
+    interests = set(student.interests or [])
     query_lower = query.lower() if query else ''
-    
+
+    # Use knowledge graph for eligibility
+    reachable = get_reachable_courses(completed_ids)
+
     all_courses = Course.query.all()
+    candidate_ids = [c.id for c in all_courses if c.id not in taken]
+
+    # Batch compute collaborative scores
+    collab_scores = get_collaborative_scores(student.id, completed_ids, candidate_ids)
+
+    # Resolve job skills for career alignment
+    effective_job_title = target_job_title or student.target_job_title
+    effective_job_skills = set()
+    if job_skills:
+        effective_job_skills = set(s.lower() for s in job_skills)
+
+    student_gpa = student.program_gpa or 0.0
+
     scored = []
-    
+
     for course in all_courses:
         if course.id in taken:
             continue
-            
-        # Check eligibility (prerequisites met)
-        prereqs_met = all(pid in completed_ids for pid in (course.prerequisites or []))
-        
-        # Score based on interest match
+
         score = 0
-        match_reason = None
-        
+        factors = []
+        prereqs_met = course.id in reachable
+
+        # --- Prerequisite eligibility ---
         if prereqs_met:
             score += 50
-            match_reason = "You've met all prerequisites"
-        
-        # Topic/interest matching
+            factors.append({
+                "type": "prerequisite",
+                "description": "All prerequisites completed",
+                "points": 50,
+            })
+        else:
+            path = get_path_to_course(completed_ids, course.id)
+            path_names = [Course.query.get(cid).name for cid in path if Course.query.get(cid) and cid != course.id]
+            if path_names:
+                factors.append({
+                    "type": "prerequisite",
+                    "description": f"Still need: {', '.join(path_names)}",
+                    "points": 0,
+                })
+
+        # --- Interest / topic match ---
         for topic in (course.topics or []):
             if topic.lower() in [i.lower() for i in interests]:
                 score += 30
-                match_reason = f"Aligns with your interest in {topic}"
+                factors.append({
+                    "type": "interest",
+                    "description": f"Aligns with your interest in {topic}",
+                    "points": 30,
+                })
                 break
-        
-        # Query matching
+
+        # --- Collaborative filtering ---
+        collab = collab_scores.get(course.id)
+        if collab:
+            ratio, explanation = collab
+            collab_pts = round(25 * ratio)
+            if collab_pts > 0:
+                score += collab_pts
+                factors.append({
+                    "type": "collaborative",
+                    "description": explanation,
+                    "points": collab_pts,
+                })
+
+        # --- Job market / career alignment ---
+        if effective_job_skills:
+            course_skills = set(s.lower() for s in (course.skills or []))
+            overlap = course_skills & effective_job_skills
+            if overlap:
+                career_pts = len(overlap) * 15
+                score += career_pts
+                factors.append({
+                    "type": "career",
+                    "description": f"Builds {len(overlap)} skill{'s' if len(overlap) > 1 else ''} relevant to '{effective_job_title}'",
+                    "points": career_pts,
+                })
+
+        # --- Query keyword bonuses ---
         if query_lower:
             if any(t in query_lower for t in ['ml', 'machine learning', 'ai', 'artificial intelligence']):
-                if 'machine learning' in (course.name or '').lower() or 'ai' in (course.topics or []):
+                if 'machine learning' in (course.name or '').lower() or 'ai' in [t.lower() for t in (course.topics or [])]:
                     score += 40
-                    match_reason = "Matches your ML/AI interest"
+                    factors.append({
+                        "type": "query",
+                        "description": "Matches your ML/AI interest",
+                        "points": 40,
+                    })
             if any(t in query_lower for t in ['web', 'next semester', 'recommend']):
                 score += 10
-        
-        # Default match reason
-        if not match_reason:
-            match_reason = "Complements your academic profile"
-        
+
+        # --- GPA prediction ---
+        grade_prediction = predict_grade(student_gpa, course.id) if student_gpa > 0 else None
+        if grade_prediction:
+            if grade_prediction['predictedGPA'] < student_gpa - 0.3:
+                score -= 10
+                factors.append({
+                    "type": "gpa_warning",
+                    "description": f"May lower your GPA (predicted ~{grade_prediction['predictedLetter']})",
+                    "points": -10,
+                })
+            else:
+                factors.append({
+                    "type": "gpa",
+                    "description": f"Predicted grade: {grade_prediction['predictedLetter']} ({grade_prediction['predictedGPA']})",
+                    "points": 0,
+                })
+
+        # Build top-level match reason from highest-point factor
+        top_factor = max(factors, key=lambda f: f['points']) if factors else None
+        match_reason = top_factor['description'] if top_factor else "Complements your academic profile"
+
         scored.append({
             'course': course,
             'score': score,
             'eligible': prereqs_met,
-            'matchReason': match_reason
+            'matchReason': match_reason,
+            'explanationFactors': factors,
+            'predictedGrade': grade_prediction,
         })
-    
-    # Sort by score, take top 6
+
     scored.sort(key=lambda x: x['score'], reverse=True)
     top = scored[:6]
-    
+
     return [
         {
             **item['course'].to_dict(),
             'eligible': item['eligible'],
-            'matchReason': item['matchReason']
+            'matchReason': item['matchReason'],
+            'explanationFactors': item['explanationFactors'],
+            'predictedGrade': item['predictedGrade'],
         }
         for item in top
     ]

@@ -37,9 +37,19 @@ export const api = {
   getPrograms: () => request('/programs'),
 
   // Advisor
-  getRecommendations: (query) => request('/recommend', {
+  getRecommendations: (query, targetJobTitle = null) => request('/recommend', {
     method: 'POST',
-    body: JSON.stringify({ query }),
+    body: JSON.stringify({ query, targetJobTitle }),
   }),
   getProgress: () => request('/progress'),
+
+  // Prerequisite Graph
+  getPrerequisitePath: (target) => request(`/prerequisite-path?target=${encodeURIComponent(target)}`),
+  getPrerequisiteGraph: () => request('/prerequisite-graph'),
+
+  // Onboarding
+  submitOnboarding: (data) => request('/onboarding', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  }),
 };
