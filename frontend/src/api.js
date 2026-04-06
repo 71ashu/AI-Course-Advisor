@@ -37,9 +37,9 @@ export const api = {
   getPrograms: () => request('/programs'),
 
   // Advisor
-  getRecommendations: (query, targetJobTitle = null) => request('/recommend', {
+  getRecommendations: (query) => request('/recommend', {
     method: 'POST',
-    body: JSON.stringify({ query, targetJobTitle }),
+    body: JSON.stringify({ query }),
   }),
   getProgress: () => request('/progress'),
 

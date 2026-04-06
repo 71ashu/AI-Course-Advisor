@@ -1,13 +1,12 @@
 # AI Course Advisor
 
-A full-stack academic planning application that provides intelligent course recommendations based on student profiles, completed courses, and career goals. Features a multi-signal recommendation engine with explainability, collaborative filtering, GPA prediction, job market alignment, and cold start handling.
+A full-stack academic planning application that provides intelligent course recommendations based on student profiles, completed courses, and career goals. Features a multi-signal recommendation engine with explainability, collaborative filtering, GPA prediction, and cold start handling.
 
 ## Features
 
-- **Explainable Recommendations** -- Each course recommendation includes structured explanation factors (prerequisite status, interest match, peer patterns, career fit, GPA prediction) with color-coded UI pills
+- **Explainable Recommendations** -- Each course recommendation includes structured explanation factors (prerequisite status, interest match, peer patterns, GPA prediction) with color-coded UI pills
 - **Collaborative Filtering** -- Item-based collaborative filtering using co-enrollment patterns from synthetic student data to surface courses taken by students with similar backgrounds
 - **GPA / Grade Prediction** -- Predicts likely grades using historical grade distributions, flags courses that may lower a student's GPA
-- **Job Market Alignment** -- Optional target job title input; uses LLM-based skill extraction to align course recommendations with career goals
 - **Prerequisite Knowledge Graph** -- NetworkX-powered DAG that computes reachable courses, prerequisite paths, and course depth
 - **Cold Start Handling** -- 4-step onboarding quiz for new users (interests, experience level, career path, course load) to bootstrap personalized recommendations before any history exists
 - **Evaluation Metrics** -- Leave-one-out evaluation script computing Precision@k, Recall@k, and Hit Rate across 30 synthetic students
@@ -17,7 +16,7 @@ A full-stack academic planning application that provides intelligent course reco
 - **Frontend**: React 18, Vite, Tailwind CSS, Lucide React
 - **Backend**: Flask, SQLAlchemy, PostgreSQL
 - **ML/Graph**: NetworkX (prerequisite DAG), NumPy, item-based collaborative filtering
-- **LLM**: OpenAI GPT-4o-mini (advisory messages, job skill extraction)
+- **LLM**: OpenAI GPT-4o-mini (advisory messages)
 - **Auth**: Session-based (Flask sessions)
 
 ## Project Structure
@@ -31,7 +30,7 @@ AI-Course-Advisor/
 │   │   ├── api.js               # API client
 │   │   └── components/
 │   │       ├── course-advisor/
-│   │       │   ├── AdvisorTab.jsx       # Chat + job title input
+│   │       │   ├── AdvisorTab.jsx       # Chat interface
 │   │       │   ├── CourseCard.jsx       # Explainability pills + grade prediction
 │   │       │   ├── OnboardingQuiz.jsx   # Cold start 4-step wizard
 │   │       │   ├── ProgressPanel.jsx
@@ -41,9 +40,9 @@ AI-Course-Advisor/
 │   └── package.json
 ├── backend/                     # Flask API
 │   ├── app.py                   # Routes (recommend, onboarding, prerequisite-path)
-│   ├── models.py                # DB models (Course.skills, Student.target_job_title)
+│   ├── models.py                # DB models
 │   ├── services.py              # Multi-signal scoring engine
-│   ├── llm.py                   # GPT-4o-mini: advisory messages + job skill extraction
+│   ├── llm.py                   # GPT-4o-mini advisory messages
 │   ├── knowledge_graph.py       # NetworkX prerequisite DAG
 │   ├── collaborative.py         # Item-based collaborative filtering
 │   ├── grade_predictor.py       # Historical grade-based prediction
@@ -101,9 +100,9 @@ New user registration triggers the onboarding quiz for cold start handling.
 | POST | `/api/auth/logout` | Logout |
 | GET | `/api/auth/me` | Get current user |
 | GET | `/api/profile` | Get profile |
-| PUT | `/api/profile` | Update profile (supports `targetJobTitle`) |
-| GET | `/api/courses` | List all courses (with skills) |
-| POST | `/api/recommend` | Get recommendations (accepts `targetJobTitle`) |
+| PUT | `/api/profile` | Update profile |
+| GET | `/api/courses` | List all courses |
+| POST | `/api/recommend` | Get recommendations |
 | GET | `/api/progress` | Get degree progress |
 | POST | `/api/onboarding` | Submit onboarding quiz answers |
 | GET | `/api/prerequisite-path?target=CS301` | Get prerequisite path to a course |
@@ -122,7 +121,6 @@ Each candidate course is scored using multiple signals:
 | Interest/topic match | +30 | Course topics align with student interests |
 | Query keywords | +10..40 | Matches to ML/AI/web keywords in the query |
 | Collaborative filtering | +25 * ratio | Fraction of similar students who took this course |
-| Job market alignment | +15 per skill | Skills matching target job title |
 | GPA protection | -10 | Penalty if predicted grade would lower overall GPA |
 
 The top 6 courses by total score are returned, each with structured `explanationFactors` for transparency.
@@ -163,8 +161,4 @@ SECRET_KEY=your-secret-key
 OPENAI_API_KEY=your-openai-api-key-here
 ```
 
-The `OPENAI_API_KEY` enables GPT-4o-mini for:
-- Personalized advisory messages with explainability-aware prompting
-- Job skill extraction from target job titles
-
-Without it, the system falls back to template-based messages and keyword-based skill matching.
+The `OPENAI_API_KEY` enables GPT-4o-mini for personalized advisory messages with explainability-aware prompting. Without it, the system falls back to template-based messages.

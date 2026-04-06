@@ -9,63 +9,54 @@ COURSES = [
         "prerequisites": [],
         "description": "Fundamental concepts of computer science including programming basics, algorithms, and problem-solving.",
         "topics": ["programming", "algorithms", "problem-solving"], "department": "Computer Science",
-        "skills": ["python", "programming-fundamentals", "problem-solving", "computational-thinking"],
     },
     {
         "id": "CS201", "name": "Data Structures and Algorithms", "units": 4, "difficulty": "intermediate",
         "prerequisites": ["CS101"],
         "description": "In-depth study of fundamental data structures and algorithms, analysis of complexity.",
         "topics": ["data structures", "algorithms", "complexity analysis"], "department": "Computer Science",
-        "skills": ["data-structures", "algorithm-design", "complexity-analysis", "java", "problem-solving"],
     },
     {
         "id": "CS301", "name": "Machine Learning", "units": 3, "difficulty": "advanced",
         "prerequisites": ["CS201", "MATH200"],
         "description": "Introduction to machine learning algorithms, supervised and unsupervised learning, neural networks.",
         "topics": ["machine learning", "neural networks", "AI"], "department": "Computer Science",
-        "skills": ["python", "machine-learning", "neural-networks", "data-analysis", "scikit-learn", "tensorflow"],
     },
     {
         "id": "CS350", "name": "Web Development", "units": 3, "difficulty": "intermediate",
         "prerequisites": ["CS101"],
         "description": "Full-stack web development including HTML, CSS, JavaScript, and modern frameworks.",
         "topics": ["web development", "frontend", "backend"], "department": "Computer Science",
-        "skills": ["javascript", "html-css", "react", "node-js", "rest-apis", "sql"],
     },
     {
         "id": "CS250", "name": "Database Systems", "units": 3, "difficulty": "intermediate",
         "prerequisites": ["CS201"],
         "description": "Database design, SQL, normalization, and transaction management.",
         "topics": ["databases", "SQL", "data management"], "department": "Computer Science",
-        "skills": ["sql", "database-design", "normalization", "postgresql", "data-modeling"],
     },
     {
         "id": "MATH100", "name": "Calculus I", "units": 4, "difficulty": "beginner",
         "prerequisites": [],
         "description": "Limits, derivatives, and integrals of single-variable functions.",
         "topics": ["calculus", "mathematics"], "department": "Mathematics",
-        "skills": ["calculus", "mathematical-reasoning", "analytical-thinking"],
     },
     {
         "id": "MATH200", "name": "Linear Algebra", "units": 3, "difficulty": "intermediate",
         "prerequisites": ["MATH100"],
         "description": "Vectors, matrices, eigenvalues, and applications.",
         "topics": ["linear algebra", "mathematics"], "department": "Mathematics",
-        "skills": ["linear-algebra", "matrix-operations", "mathematical-modeling", "numpy"],
     },
     {
         "id": "ENG101", "name": "English Composition", "units": 3, "difficulty": "beginner",
         "prerequisites": [],
         "description": "Academic writing, research, and critical analysis.",
         "topics": ["writing", "communication"], "department": "English",
-        "skills": ["technical-writing", "communication", "research", "critical-thinking"],
     },
     {
         "id": "PHY101", "name": "Physics I", "units": 4, "difficulty": "intermediate",
         "prerequisites": ["MATH100"],
         "description": "Mechanics, thermodynamics, and waves.",
         "topics": ["physics", "mechanics"], "department": "Physics",
-        "skills": ["physics", "mathematical-modeling", "analytical-thinking", "lab-skills"],
     },
 ]
 
@@ -109,17 +100,6 @@ _CAREER_POOLS = [
     "Product Manager in tech",
     "DevOps Engineer",
     "Quantitative Analyst",
-]
-
-_JOB_TITLE_POOLS = [
-    "Software Engineer",
-    "ML Engineer",
-    "Data Scientist",
-    "Full-Stack Developer",
-    "Backend Engineer",
-    "AI Researcher",
-    "Data Engineer",
-    None, None, None,  # some students have no target
 ]
 
 SYNTHETIC_STUDENTS = []
@@ -202,7 +182,6 @@ for i in range(30):
         "year": random.choice(_YEARS),
         "interests": random.choice(_INTEREST_POOLS),
         "career_goals": random.choice(_CAREER_POOLS),
-        "target_job_title": random.choice(_JOB_TITLE_POOLS),
         "completed": completed_courses,
         "current": current_courses,
         "grades": grades,
@@ -299,7 +278,6 @@ def _seed_synthetic_student(data):
         year=data['year'],
         interests=data['interests'],
         career_goals=data['career_goals'],
-        target_job_title=data.get('target_job_title'),
         is_synthetic=True,
         onboarding_completed=True,
     )
@@ -328,11 +306,7 @@ def _seed_synthetic_student(data):
 def seed():
     with app.app_context():
         for c in COURSES:
-            existing = db.session.get(Course, c['id'])
-            if existing:
-                if not existing.skills:
-                    existing.skills = c.get('skills', [])
-            else:
+            if not db.session.get(Course, c['id']):
                 db.session.add(Course(**c))
 
         # Demo student
@@ -347,7 +321,6 @@ def seed():
                 year='Junior',
                 interests=['AI', 'Web Development', 'Machine Learning'],
                 career_goals='Software Engineer at a tech company',
-                target_job_title='ML Engineer',
                 onboarding_completed=True,
             )
             demo.set_password('demo123')

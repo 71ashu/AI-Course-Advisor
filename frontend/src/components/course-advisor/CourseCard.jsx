@@ -1,12 +1,11 @@
 import { useState } from 'react';
-import { BookOpen, Check, X, Sparkles, ChevronDown, ChevronUp, TrendingUp, Users, Briefcase, GitBranch, Brain, AlertTriangle } from 'lucide-react';
+import { BookOpen, Check, X, Sparkles, ChevronDown, ChevronUp, TrendingUp, Users, GitBranch, Brain, AlertTriangle } from 'lucide-react';
 import DifficultyBadge from './DifficultyBadge';
 
 const FACTOR_CONFIG = {
   prerequisite: { icon: GitBranch, label: 'Prerequisites', colorClass: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' },
   interest: { icon: Sparkles, label: 'Interest Match', colorClass: 'bg-violet-500/20 text-violet-300 border-violet-500/30' },
   collaborative: { icon: Users, label: 'Peer Pattern', colorClass: 'bg-blue-500/20 text-blue-300 border-blue-500/30' },
-  career: { icon: Briefcase, label: 'Career Fit', colorClass: 'bg-amber-500/20 text-amber-300 border-amber-500/30' },
   gpa: { icon: TrendingUp, label: 'Grade Prediction', colorClass: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30' },
   gpa_warning: { icon: AlertTriangle, label: 'GPA Impact', colorClass: 'bg-rose-500/20 text-rose-300 border-rose-500/30' },
   query: { icon: Brain, label: 'Query Match', colorClass: 'bg-fuchsia-500/20 text-fuchsia-300 border-fuchsia-500/30' },

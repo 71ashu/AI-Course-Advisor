@@ -32,7 +32,6 @@ class Course(db.Model):
     # Legacy fields retained for backwards-compatibility with seeded demo data
     difficulty = db.Column(db.String(20))
     topics = db.Column(db.JSON, default=list)
-    skills = db.Column(db.JSON, default=list)
 
     def to_dict(self):
         return {
@@ -43,7 +42,6 @@ class Course(db.Model):
             'description': self.description or '',
             'department': self.department or '',
             'prerequisites': self.prerequisites or [],
-            'skills': self.skills or [],
         }
 
 
@@ -60,7 +58,6 @@ class Student(db.Model):
     year = db.Column(db.String(20), default='Sophomore')  # Freshman, Sophomore, Junior, Senior
     interests = db.Column(db.JSON, default=list)  # e.g. ["AI", "Web Development"]
     career_goals = db.Column(db.String(500))
-    target_job_title = db.Column(db.String(200))
     program_gpa = db.Column(db.Float, default=0.0)
     is_synthetic = db.Column(db.Boolean, default=False)
     onboarding_completed = db.Column(db.Boolean, default=False)
@@ -85,7 +82,6 @@ class Student(db.Model):
             'year': self.year,
             'interests': self.interests or [],
             'careerGoals': self.career_goals or '',
-            'targetJobTitle': self.target_job_title or '',
             'programGPA': self.program_gpa if self.program_gpa is not None else 0.0,
             'onboardingCompleted': self.onboarding_completed or False,
             'completedCourses': [sc.course_id for sc in completed],

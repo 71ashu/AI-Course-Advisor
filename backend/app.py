@@ -1,7 +1,7 @@
 """
 AI Course Advisor - Full Stack Backend
 Flask API with PostgreSQL database, authentication, and intelligent recommendations.
-Features: knowledge graph, collaborative filtering, GPA prediction, job market alignment,
+Features: knowledge graph, collaborative filtering, GPA prediction,
 explainability, and cold start handling.
 """
 
@@ -11,7 +11,7 @@ from flask_migrate import Migrate
 from config import Config
 from models import db, Course, Program, ProgramCourse, Student, StudentCourse
 from services import get_degree_progress, get_recommendations
-from llm import get_advisory_message, extract_job_skills
+from llm import get_advisory_message
 from knowledge_graph import get_path_to_course, get_graph_summary
 
 app = Flask(__name__)
@@ -117,7 +117,6 @@ def register():
         year=data.get('year', 'Sophomore'),
         interests=data.get('interests', []),
         career_goals=data.get('careerGoals', ''),
-        target_job_title=data.get('targetJobTitle', ''),
     )
     student.set_password(data['password'])
     db.session.add(student)
@@ -176,7 +175,6 @@ def profile():
     if data.get('year'): student.year = data['year']
     if data.get('interests') is not None: student.interests = data['interests']
     if data.get('careerGoals') is not None: student.career_goals = data['careerGoals']
-    if data.get('targetJobTitle') is not None: student.target_job_title = data['targetJobTitle']
     
     if data.get('completedCourses') is not None:
         _sync_student_courses(student.id, 'completed', data['completedCourses'])
@@ -205,17 +203,8 @@ def recommend():
     
     data = request.json or {}
     query = data.get('query', '')
-    target_job_title = data.get('targetJobTitle') or student.target_job_title
 
-    job_skills = None
-    if target_job_title:
-        job_skills = extract_job_skills(target_job_title)
-
-    recommendations = get_recommendations(
-        student, query,
-        target_job_title=target_job_title,
-        job_skills=job_skills,
-    )
+    recommendations = get_recommendations(student, query)
     message = get_advisory_message(student, query, recommendations)
     return jsonify({'recommendations': recommendations, 'message': message})
 
@@ -287,10 +276,6 @@ def onboarding():
     career_goals = data.get('careerGoals', '')
     if career_goals:
         student.career_goals = career_goals
-
-    target_job = data.get('targetJobTitle', '')
-    if target_job:
-        student.target_job_title = target_job
 
     experience_level = data.get('experienceLevel', '')
     if experience_level:

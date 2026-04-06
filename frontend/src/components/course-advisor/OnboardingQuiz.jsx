@@ -53,7 +53,6 @@ export default function OnboardingQuiz({ onComplete, isLoading }) {
       interests,
       experienceLevel: experience,
       careerGoals: career === 'other' ? '' : career,
-      targetJobTitle: career === 'other' ? '' : career,
       courseLoad,
     });
   };

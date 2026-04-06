@@ -1,7 +1,7 @@
 """Business logic for recommendations and degree progress.
 
 Integrates: knowledge graph, collaborative filtering, GPA prediction,
-job market alignment, and structured explainability.
+and structured explainability.
 """
 import re
 from models import Course, Program, ProgramCourse, Student, StudentCourse, db
@@ -158,14 +158,13 @@ def get_degree_progress(student):
     }
 
 
-def get_recommendations(student, query='', target_job_title=None, job_skills=None):
+def get_recommendations(student, query=''):
     """Get course recommendations with multi-signal scoring and structured explanations.
 
     Scoring signals:
       - Prerequisite eligibility (knowledge graph)          +50
       - Interest/topic match                                +30
       - Collaborative filtering (peer enrollment patterns)  +25 * ratio
-      - Job market skill alignment                          +15 per skill
       - Query keyword bonuses                               +10..40
       - GPA prediction penalty (if course would hurt GPA)   -10
     """
@@ -189,12 +188,6 @@ def get_recommendations(student, query='', target_job_title=None, job_skills=Non
 
     # Batch compute collaborative scores
     collab_scores = get_collaborative_scores(student.id, completed_ids, candidate_ids)
-
-    # Resolve job skills for career alignment
-    effective_job_title = target_job_title or student.target_job_title
-    effective_job_skills = set()
-    if job_skills:
-        effective_job_skills = set(s.lower() for s in job_skills)
 
     student_gpa = student.program_gpa or 0.0
 
@@ -248,19 +241,6 @@ def get_recommendations(student, query='', target_job_title=None, job_skills=Non
                     "type": "collaborative",
                     "description": explanation,
                     "points": collab_pts,
-                })
-
-        # --- Job market / career alignment ---
-        if effective_job_skills:
-            course_skills = set(s.lower() for s in (course.skills or []))
-            overlap = course_skills & effective_job_skills
-            if overlap:
-                career_pts = len(overlap) * 15
-                score += career_pts
-                factors.append({
-                    "type": "career",
-                    "description": f"Builds {len(overlap)} skill{'s' if len(overlap) > 1 else ''} relevant to '{effective_job_title}'",
-                    "points": career_pts,
                 })
 
         # --- Query keyword bonuses ---

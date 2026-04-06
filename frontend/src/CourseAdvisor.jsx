@@ -10,7 +10,6 @@ export default function CourseAdvisor({ student, onLogout }) {
   const [studentProfile, setStudentProfile] = useState(student);
   const [activeTab, setActiveTab] = useState('advisor');
   const [query, setQuery] = useState('');
-  const [targetJobTitle, setTargetJobTitle] = useState(student?.targetJobTitle || '');
   const [chatHistory, setChatHistory] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [degreeProgress, setDegreeProgress] = useState(null);
@@ -23,7 +22,6 @@ export default function CourseAdvisor({ student, onLogout }) {
 
   useEffect(() => {
     setStudentProfile(student);
-    setTargetJobTitle(student?.targetJobTitle || '');
   }, [student]);
 
   useEffect(() => {
@@ -44,7 +42,6 @@ export default function CourseAdvisor({ student, onLogout }) {
     try {
       const { student: updated } = await api.submitOnboarding(answers);
       setStudentProfile(updated);
-      setTargetJobTitle(updated.targetJobTitle || '');
     } catch (err) {
       console.error('Onboarding failed:', err);
     } finally {
@@ -61,10 +58,7 @@ export default function CourseAdvisor({ student, onLogout }) {
     setIsLoading(true);
 
     try {
-      const { recommendations: recs, message } = await api.getRecommendations(
-        query,
-        targetJobTitle || null
-      );
+      const { recommendations: recs, message } = await api.getRecommendations(query);
 
       const aiMessage = {
         role: 'assistant',
@@ -185,8 +179,6 @@ export default function CourseAdvisor({ student, onLogout }) {
             setQuery={setQuery}
             handleKeyPress={handleKeyPress}
             handleAskAdvisor={handleAskAdvisor}
-            targetJobTitle={targetJobTitle}
-            setTargetJobTitle={setTargetJobTitle}
           />
         )}
 
