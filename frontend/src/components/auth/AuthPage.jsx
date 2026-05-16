@@ -15,7 +15,7 @@ export default function AuthPage({
   setSelectedUniversity
 }) {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-violet-950 flex items-center justify-center p-6">
+    <div className="min-h-screen bg-app-shell flex items-center justify-center p-6">
       <div className="w-full max-w-md">
         <h1 className="text-4xl font-black mb-2 bg-gradient-to-r from-violet-400 to-fuchsia-400 bg-clip-text text-transparent text-center">
           AI Course Advisor
