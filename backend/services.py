@@ -11,6 +11,95 @@ from grade_predictor import predict_grade
 
 REQUIRED_CREDITS = 120
 
+# Subject prefixes often used in catalogs (SCU-style EMGT/ENGR/CSEN, etc.).
+KNOWN_SUBJECT_PREFIXES = frozenset({
+    'AMTH', 'BIO', 'CHEM', 'COEN', 'CSEN', 'CSCI', 'ECON', 'EE', 'ELEN',
+    'EMGT', 'ENGR', 'ENG', 'MATH', 'MECH', 'PHYS', 'PSYC', 'STAT',
+})
+
+CS_SUBJECT_PREFIXES = frozenset({'CS', 'CSEN', 'COEN', 'CSCI'})
+
+QUERY_STOPWORDS = frozenset({
+    'a', 'all', 'also', 'am', 'an', 'and', 'any', 'are', 'as', 'at', 'be',
+    'been', 'being', 'both', 'but', 'by', 'can', 'could', 'did', 'do',
+    'does', 'each', 'few', 'for', 'from', 'further', 'had', 'has', 'have',
+    'her', 'here', 'hers', 'him', 'his', 'how', 'i', 'if', 'in', 'into',
+    'is', 'it', 'its', 'just', 'like', 'may', 'me', 'might', 'more', 'most',
+    'must', 'my', 'need', 'no', 'nor', 'not', 'now', 'of', 'off', 'on',
+    'once', 'only', 'or', 'other', 'our', 'ours', 'out', 'over', 'own',
+    'please', 'same', 'she', 'should', 'so', 'some', 'such', 'tell',
+    'than', 'that', 'the', 'their', 'them', 'then', 'there', 'these',
+    'they', 'this', 'those', 'through', 'to', 'too', 'under', 'until',
+    'very', 'want', 'was', 'we', 'were', 'what', 'when', 'where', 'which',
+    'who', 'whom', 'why', 'will', 'with', 'would', 'you', 'your',
+    'course', 'courses', 'class', 'classes', 'semester', 'term', 'year',
+    'next', 'recommend', 'recommendations', 'looking', 'help', 'show',
+    'give', 'find', 'suggest', 'about', 'instead', 'rather', 'something',
+    'anything', 'everything', 'non',
+})
+
+
+def _subject_prefix(course_id):
+    """Leading alphabetic subject code from catalog id (e.g. CSEN 342 -> CSEN, CS101 -> CS)."""
+    if not course_id:
+        return ''
+    s = str(course_id).strip().upper()
+    m = re.match(r'^([A-Z]+)', s)
+    return m.group(1) if m else ''
+
+
+def _course_search_blob(course):
+    parts = [course.id or '', course.name or '', course.description or '', course.department or '']
+    for t in course.topics or []:
+        parts.append(str(t))
+    return ' '.join(parts).lower()
+
+
+def _parse_query_focus(query):
+    """Extract subject inclusion/exclusion and keywords so rankings follow the user's question."""
+    if not (query or '').strip():
+        return None
+
+    raw = query.strip()
+    ql = raw.lower()
+    ql = re.sub(r'(non|outside|excluding|without|avoid|skip)(csen|csci|coen)', r'\1 \2', ql)
+
+    exclude_prefixes = set()
+
+    if re.search(r'\b(?:non|outside|excluding|without|avoid|skip)\s*[-]?\s*csen\b', ql):
+        exclude_prefixes.add('CSEN')
+        # Demo catalogs often use CS* ids instead of CSEN; treat as same intent.
+        exclude_prefixes.update(CS_SUBJECT_PREFIXES)
+
+    if re.search(
+        r'\b(?:non|outside|excluding|without|avoid|skip)\s*[-]?\s*(?:computer\s+science|csci)\b',
+        ql,
+    ):
+        exclude_prefixes.update(CS_SUBJECT_PREFIXES)
+
+    if re.search(r'\b(?:non|outside|excluding|without|avoid|skip)\s*[-]?\s*cs\b(?![a-z0-9])', ql):
+        exclude_prefixes.update(CS_SUBJECT_PREFIXES)
+
+    tokens_upper = set(re.findall(r'\b([A-Z]{2,8})\b', re.sub(r'[/]', ' ', raw).upper()))
+    include_prefixes = {
+        t for t in tokens_upper
+        if t in KNOWN_SUBJECT_PREFIXES and t not in exclude_prefixes
+    }
+
+    semantic_tokens = []
+    for w in re.findall(r'[a-z0-9]+', ql):
+        if len(w) < 3 or w in QUERY_STOPWORDS:
+            continue
+        if w in {x.lower() for x in KNOWN_SUBJECT_PREFIXES}:
+            continue
+        semantic_tokens.append(w)
+
+    return {
+        'exclude_prefixes': exclude_prefixes,
+        'include_prefixes': include_prefixes,
+        'semantic_tokens': semantic_tokens,
+    }
+
 
 def _serialize_progress_course(enrollment):
     course = Course.query.get(enrollment.course_id)
@@ -143,7 +232,7 @@ def get_degree_progress(student):
         data for data in (_serialize_progress_course(sc) for sc in current) if data is not None
     ]
     
-    return {
+    return {       
         'totalCredits': total_credits,
         'requiredCredits': required_credits,
         'progressPercentage': round(progress_pct, 1),
@@ -165,7 +254,8 @@ def get_recommendations(student, query=''):
       - Prerequisite eligibility (knowledge graph)          +50
       - Interest/topic match                                +30
       - Collaborative filtering (peer enrollment patterns)  +25 * ratio
-      - Query keyword bonuses                               +10..40
+      - Query alignment (subject codes, exclusions, keywords)
+      - Legacy ML/AI query phrases                           +40 (unless excluded CS subjects)
       - GPA prediction penalty (if course would hurt GPA)   -10
     """
     completed_ids = set(
@@ -178,7 +268,7 @@ def get_recommendations(student, query=''):
     )
     taken = completed_ids | current_ids
     interests = set(student.interests or [])
-    query_lower = query.lower() if query else ''
+    query_focus = _parse_query_focus(query)
 
     # Use knowledge graph for eligibility
     reachable = get_reachable_courses(completed_ids)
@@ -205,7 +295,7 @@ def get_recommendations(student, query=''):
         if prereqs_met:
             score += 50
             factors.append({
-                "type": "prerequisite",
+                "type": "prerequisite", 
                 "description": "All prerequisites completed",
                 "points": 50,
             })
@@ -219,16 +309,37 @@ def get_recommendations(student, query=''):
                     "points": 0,
                 })
 
+        prefix = _subject_prefix(course.id)
+        blob = _course_search_blob(course)
+
+        if query_focus and query_focus['exclude_prefixes']:
+            ep = query_focus['exclude_prefixes']
+            excluded = False
+            if prefix and prefix in ep:
+                excluded = True
+            elif ep & CS_SUBJECT_PREFIXES:
+                dept = (course.department or '').lower()
+                if prefix in CS_SUBJECT_PREFIXES or 'computer' in dept:
+                    excluded = True
+            if excluded:
+                continue
+
+        cs_query_excluded = (
+            query_focus
+            and query_focus['exclude_prefixes'] & CS_SUBJECT_PREFIXES
+        )
+
         # --- Interest / topic match ---
-        for topic in (course.topics or []):
-            if topic.lower() in [i.lower() for i in interests]:
-                score += 30
-                factors.append({
-                    "type": "interest",
-                    "description": f"Aligns with your interest in {topic}",
-                    "points": 30,
-                })
-                break
+        if not (cs_query_excluded and prefix in CS_SUBJECT_PREFIXES):
+            for topic in (course.topics or []):
+                if topic.lower() in [i.lower() for i in interests]:
+                    score += 30
+                    factors.append({
+                        "type": "interest",
+                        "description": f"Aligns with your interest in {topic}",
+                        "points": 30,
+                    })
+                    break
 
         # --- Collaborative filtering ---
         collab = collab_scores.get(course.id)
@@ -243,18 +354,41 @@ def get_recommendations(student, query=''):
                     "points": collab_pts,
                 })
 
-        # --- Query keyword bonuses ---
-        if query_lower:
-            if any(t in query_lower for t in ['ml', 'machine learning', 'ai', 'artificial intelligence']):
-                if 'machine learning' in (course.name or '').lower() or 'ai' in [t.lower() for t in (course.topics or [])]:
+        # --- Query alignment (follow what the user asked) ---
+        if query_focus:
+            if query_focus['include_prefixes'] and prefix in query_focus['include_prefixes']:
+                pts = 45
+                score += pts
+                factors.append({
+                    "type": "query",
+                    "description": f"Matches requested subject ({prefix})",
+                    "points": pts,
+                })
+
+            hits = sorted({t for t in query_focus['semantic_tokens'] if t in blob})
+            if hits:
+                pts = min(18 + 6 * len(hits), 42)
+                score += pts
+                preview = ', '.join(hits[:4])
+                if len(hits) > 4:
+                    preview += ', …'
+                factors.append({
+                    "type": "query",
+                    "description": f"Aligns with your question ({preview})",
+                    "points": pts,
+                })
+
+        ql = query.lower() if query else ''
+        if ql and not (query_focus and query_focus['exclude_prefixes'] & CS_SUBJECT_PREFIXES):
+            if any(t in ql for t in ['ml', 'machine learning', 'ai', 'artificial intelligence']):
+                topic_ai = [t.lower() for t in (course.topics or [])]
+                if 'machine learning' in (course.name or '').lower() or 'ai' in topic_ai:
                     score += 40
                     factors.append({
                         "type": "query",
                         "description": "Matches your ML/AI interest",
                         "points": 40,
                     })
-            if any(t in query_lower for t in ['web', 'next semester', 'recommend']):
-                score += 10
 
         # --- GPA prediction ---
         grade_prediction = predict_grade(student_gpa, course.id) if student_gpa > 0 else None

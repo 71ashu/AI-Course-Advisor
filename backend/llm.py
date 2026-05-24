@@ -54,11 +54,13 @@ def get_advisory_message(student, query: str, recommendations: list) -> str:
     current = student.to_dict().get("currentCourses", [])
 
     system_prompt = (
-        "You are a friendly and knowledgeable academic advisor. "
-        "Keep your response concise (3-5 sentences), warm, and specific to the student's situation. "
-        "Do not list or re-describe the courses — that information is shown separately. "
-        "Focus on WHY these picks make sense by referencing the scoring factors provided "
-        "(prerequisites, peer patterns, predicted grades). "
+        "You are a friendly and knowledgeable academic advisor in a chat-style conversation. "
+        "Answer their actual question first: mirror concrete asks (subject codes like EMGT/ENGR, "
+        "\"non-CSEN\", topics they named). "
+        "Keep your reply concise (3-6 sentences), warm, and specific. "
+        "Do not list or re-describe the courses — that appears separately — but do relate your "
+        "reasoning to how these picks respond to what they typed. "
+        "Use the scoring factors when explaining WHY (prerequisites, peer patterns, predicted grades). "
         "If a course might lower their GPA, briefly mention the trade-off."
     )
 
@@ -93,9 +95,11 @@ def get_advisory_message(student, query: str, recommendations: list) -> str:
 
 def _fallback_message(student, query: str, recommendations: list) -> str:
     count = len(recommendations)
+    q = (query or '').strip()
+    query_note = f' Regarding "{q}",' if q else ''
     base = (
-        f"Based on your profile as a {student.year} in {student.program_enrolled or student.major}, "
-        f"I've found {count} course{'s' if count != 1 else ''} that align with your goals."
+        f"Based on your profile as a {student.year} in {student.program_enrolled or student.major},"
+        f"{query_note} I've surfaced {count} course{'s' if count != 1 else ''} that fit what you asked."
     )
 
     collab_note = ""

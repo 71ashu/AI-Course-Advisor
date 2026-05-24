@@ -5,11 +5,17 @@ Features: knowledge graph, collaborative filtering, GPA prediction,
 explainability, and cold start handling.
 """
 
+import hashlib
+import secrets
+from datetime import datetime, timedelta
+
 from flask import Flask, request, jsonify, session
 from flask_cors import CORS
 from flask_migrate import Migrate
+from sqlalchemy import func
 from config import Config
-from models import db, Course, Program, ProgramCourse, Student, StudentCourse
+from mailer import is_email_configured, send_password_reset_email
+from models import db, Course, Program, ProgramCourse, PasswordResetToken, Student, StudentCourse
 from services import get_degree_progress, get_recommendations
 from llm import get_advisory_message
 from knowledge_graph import get_path_to_course, get_graph_summary
@@ -137,6 +143,79 @@ def login():
     if not student or not student.check_password(data['password']):
         return jsonify({'error': 'Invalid credentials'}), 401
     
+    session.permanent = True
+    session['student_id'] = student.id
+    return jsonify({'student': student.to_dict()})
+
+
+@app.route('/api/auth/forgot-password', methods=['POST'])
+def forgot_password():
+    """Request a reset link; response message is fixed so email existence is not revealed."""
+    data = request.json or {}
+    email = (data.get('email') or '').strip().lower()
+    if not email:
+        return jsonify({'error': 'Email is required'}), 400
+
+    generic = {
+        'message': 'If an account exists for this email, you will receive password reset instructions.',
+    }
+    student = Student.query.filter(func.lower(Student.email) == email).first()
+    if not student:
+        return jsonify(generic)
+
+    if not is_email_configured(app.config) and not app.debug:
+        app.logger.warning(
+            'Password reset requested but MAIL_SERVER is not configured; no email was sent.',
+        )
+        return jsonify(generic)
+
+    PasswordResetToken.query.filter_by(student_id=student.id).delete(synchronize_session=False)
+
+    raw_token = secrets.token_urlsafe(32)
+    token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
+    expires = datetime.utcnow() + timedelta(hours=app.config['PASSWORD_RESET_TOKEN_HOURS'])
+    db.session.add(
+        PasswordResetToken(student_id=student.id, token_hash=token_hash, expires_at=expires)
+    )
+    db.session.commit()
+
+    reset_url = f"{app.config['FRONTEND_URL']}/?reset_token={raw_token}"
+    payload = dict(generic)
+
+    if is_email_configured(app.config):
+        try:
+            send_password_reset_email(app.config, student.email, reset_url)
+        except Exception:
+            app.logger.exception('password reset email failed')
+            PasswordResetToken.query.filter_by(student_id=student.id).delete()
+            db.session.commit()
+            return jsonify({'error': 'Could not send reset email. Try again later.'}), 500
+    if app.debug:
+        payload['devResetLink'] = reset_url
+
+    return jsonify(payload)
+
+
+@app.route('/api/auth/reset-password', methods=['POST'])
+def reset_password():
+    data = request.json or {}
+    token = (data.get('token') or '').strip()
+    password = data.get('password') or ''
+    if not token or not password:
+        return jsonify({'error': 'Token and password are required'}), 400
+    if len(password) < 8:
+        return jsonify({'error': 'Password must be at least 8 characters'}), 400
+
+    token_hash = hashlib.sha256(token.encode()).hexdigest()
+    row = PasswordResetToken.query.filter_by(token_hash=token_hash).first()
+    if not row or row.expires_at < datetime.utcnow():
+        return jsonify({'error': 'Invalid or expired reset link'}), 400
+
+    student = row.student
+    student.set_password(password)
+    PasswordResetToken.query.filter_by(student_id=student.id).delete()
+    db.session.commit()
+
     session.permanent = True
     session['student_id'] = student.id
     return jsonify({'student': student.to_dict()})

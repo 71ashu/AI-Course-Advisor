@@ -6,18 +6,32 @@ import AuthPage from './components/auth/AuthPage';
 export default function App() {
   const [student, setStudent] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [authMode, setAuthMode] = useState('login'); // 'login' | 'register'
+  const [authMode, setAuthModeState] = useState('login'); // 'login' | 'register' | 'forgot' | 'reset'
   const [authError, setAuthError] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
   const [universities, setUniversities] = useState(['Santa Clara University']);
   const [programs, setPrograms] = useState(['MS Computer Science and Engineering']);
   const [selectedUniversity, setSelectedUniversity] = useState('Santa Clara University');
+  const [forgotMessage, setForgotMessage] = useState('');
+  const [devResetLink, setDevResetLink] = useState('');
+  const [resetToken, setResetToken] = useState(null);
 
   useEffect(() => {
     api.me()
       .then(({ student }) => setStudent(student))
       .catch(() => setStudent(null))
       .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const t = params.get('reset_token');
+    if (t) {
+      setResetToken(t);
+      setAuthModeState('reset');
+      setAuthError('');
+      window.history.replaceState({}, '', window.location.pathname + window.location.hash);
+    }
   }, []);
 
   useEffect(() => {
@@ -80,6 +94,60 @@ export default function App() {
     }
   };
 
+  const handleForgotPassword = async (e) => {
+    e.preventDefault();
+    setAuthError('');
+    setAuthLoading(true);
+    try {
+      const res = await api.forgotPassword({ email: e.target.email.value });
+      setForgotMessage(res.message || '');
+      setDevResetLink(res.devResetLink || '');
+    } catch (err) {
+      setAuthError(err.message);
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleBackFromForgot = () => {
+    setAuthModeState('login');
+    setAuthError('');
+    setForgotMessage('');
+    setDevResetLink('');
+  };
+
+  const handleResetPassword = async (e) => {
+    e.preventDefault();
+    setAuthError('');
+    const p = e.target.password.value;
+    const c = e.target.confirm.value;
+    if (p !== c) {
+      setAuthError('Passwords do not match');
+      return;
+    }
+    if (!resetToken) {
+      setAuthError('Missing reset token. Open the link from your email again.');
+      return;
+    }
+    setAuthLoading(true);
+    try {
+      const res = await api.resetPassword({ token: resetToken, password: p });
+      setStudent(res.student);
+      setResetToken(null);
+      setAuthModeState('login');
+    } catch (err) {
+      setAuthError(err.message);
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleSwitchToLogin = () => {
+    setAuthModeState('login');
+    setAuthError('');
+    setResetToken(null);
+  };
+
   const handleLogout = async () => {
     await api.logout();
     setStudent(null);
@@ -97,15 +165,26 @@ export default function App() {
     return (
       <AuthPage
         authMode={authMode}
-        setAuthMode={setAuthMode}
+        setAuthMode={(mode) => {
+          setAuthModeState(mode);
+          setForgotMessage('');
+          setDevResetLink('');
+          if (mode !== 'reset') setResetToken(null);
+        }}
         setAuthError={setAuthError}
         authError={authError}
         authLoading={authLoading}
         handleAuth={handleAuth}
+        handleForgotPassword={handleForgotPassword}
+        handleResetPassword={handleResetPassword}
+        handleBackFromForgot={handleBackFromForgot}
+        onSwitchToLogin={handleSwitchToLogin}
         universities={universities}
         programs={programs}
         selectedUniversity={selectedUniversity}
         setSelectedUniversity={setSelectedUniversity}
+        forgotMessage={forgotMessage}
+        devResetLink={devResetLink}
       />
     );
   }

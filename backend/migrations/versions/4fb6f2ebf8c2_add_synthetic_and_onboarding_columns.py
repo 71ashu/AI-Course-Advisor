@@ -25,6 +25,11 @@ def upgrade():
         batch_op.drop_index(batch_op.f('ix_program_courses_course_id'))
         batch_op.drop_index(batch_op.f('ix_program_courses_program_id'))
 
+    # Drop JSONB GIN indexes before altering column types (jsonb_path_ops is invalid on plain JSON).
+    with op.batch_alter_table('programs', schema=None) as batch_op:
+        batch_op.drop_index(batch_op.f('ix_programs_admission_requirements'), postgresql_ops={'admission_requirements': 'jsonb_path_ops'}, postgresql_using='gin')
+        batch_op.drop_index(batch_op.f('ix_programs_requirements'), postgresql_ops={'requirements': 'jsonb_path_ops'}, postgresql_using='gin')
+
     with op.batch_alter_table('programs', schema=None) as batch_op:
         batch_op.alter_column('requirements',
                existing_type=postgresql.JSONB(astext_type=sa.Text()),
@@ -46,8 +51,6 @@ def upgrade():
                existing_type=postgresql.JSONB(astext_type=sa.Text()),
                type_=sa.JSON(),
                existing_nullable=True)
-        batch_op.drop_index(batch_op.f('ix_programs_admission_requirements'), postgresql_ops={'admission_requirements': 'jsonb_path_ops'}, postgresql_using='gin')
-        batch_op.drop_index(batch_op.f('ix_programs_requirements'), postgresql_ops={'requirements': 'jsonb_path_ops'}, postgresql_using='gin')
 
     with op.batch_alter_table('students', schema=None) as batch_op:
         batch_op.alter_column('is_synthetic',

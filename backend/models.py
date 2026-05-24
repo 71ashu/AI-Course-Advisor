@@ -45,6 +45,20 @@ class Course(db.Model):
         }
 
 
+class PasswordResetToken(db.Model):
+    """Single-use token for password reset (raw token is only sent by email or dev API response)."""
+
+    __tablename__ = 'password_reset_tokens'
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    student_id = db.Column(db.Integer, db.ForeignKey('students.id', ondelete='CASCADE'), nullable=False, index=True)
+    token_hash = db.Column(db.String(64), nullable=False, unique=True)
+    expires_at = db.Column(db.DateTime, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    student = db.relationship('Student', backref=db.backref('password_reset_tokens', lazy='dynamic'))
+
+
 class Student(db.Model):
     __tablename__ = 'students'
     
