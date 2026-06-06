@@ -1,5 +1,7 @@
 # AI Course Advisor
 
+![AI Course Advisor](docs/image-1780706355180.webp)
+
 A full-stack academic planning application that provides intelligent course recommendations based on student profiles, completed courses, and career goals. Features a multi-signal recommendation engine with explainability, collaborative filtering, GPA prediction, and cold start handling.
 
 ## Features
