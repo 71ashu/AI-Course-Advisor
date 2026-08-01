@@ -29,6 +29,9 @@ class Course(db.Model):
     department = db.Column(db.String(100))
     prerequisites = db.Column(db.JSON, default=list)
 
+    # Cross-listed course codes, e.g. EMGT 330 is also ENGR 330 / GREN 330
+    alt_codes = db.Column(db.JSON, default=list)
+
     # Legacy fields retained for backwards-compatibility with seeded demo data
     difficulty = db.Column(db.String(20))
     topics = db.Column(db.JSON, default=list)
@@ -42,6 +45,7 @@ class Course(db.Model):
             'description': self.description or '',
             'department': self.department or '',
             'prerequisites': self.prerequisites or [],
+            'alt_codes': self.alt_codes or [],
         }
 
 

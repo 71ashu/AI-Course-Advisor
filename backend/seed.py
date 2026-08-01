@@ -304,6 +304,14 @@ def _seed_synthetic_student(data):
 
 
 def seed():
+    from config import Config
+    if Config.FLASK_ENV == 'production':
+        raise RuntimeError(
+            'Refusing to run seed.py against a production database '
+            '(FLASK_ENV=production). This would insert/reset the demo '
+            'user and synthetic student data.'
+        )
+
     with app.app_context():
         for c in COURSES:
             if not db.session.get(Course, c['id']):

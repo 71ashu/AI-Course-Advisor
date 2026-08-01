@@ -22,7 +22,7 @@ from knowledge_graph import get_path_to_course, get_graph_summary
 
 app = Flask(__name__)
 app.config.from_object(Config)
-CORS(app, supports_credentials=True, origins=['http://localhost:5173', 'http://127.0.0.1:5173'])
+CORS(app, supports_credentials=True, origins=Config.CORS_ORIGINS)
 db.init_app(app)
 migrate = Migrate(app, db)
 
@@ -287,7 +287,6 @@ def recommend():
     message = get_advisory_message(student, query, recommendations)
     return jsonify({'recommendations': recommendations, 'message': message})
 
-
 @app.route('/api/progress', methods=['GET'])
 def progress():
     student = get_current_student()
@@ -415,4 +414,5 @@ def health():
 
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+    debug = Config.FLASK_ENV != 'production'
+    app.run(debug=debug, port=5000)

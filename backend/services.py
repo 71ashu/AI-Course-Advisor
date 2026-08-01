@@ -48,6 +48,16 @@ def _subject_prefix(course_id):
     return m.group(1) if m else ''
 
 
+def _course_prefixes(course):
+    """All subject prefixes a course is known under, including cross-listed alt codes
+    (e.g. EMGT 269 is also ENGR 269)."""
+    prefixes = {_subject_prefix(course.id)}
+    for alt in (course.alt_codes or []):
+        prefixes.add(_subject_prefix(alt))
+    prefixes.discard('')
+    return prefixes
+
+
 def _course_search_blob(course):
     parts = [course.id or '', course.name or '', course.description or '', course.department or '']
     for t in course.topics or []:
@@ -247,7 +257,7 @@ def get_degree_progress(student):
     }
 
 
-def get_recommendations(student, query=''):
+def get_recommendations(student, query='', limit=6):
     """Get course recommendations with multi-signal scoring and structured explanations.
 
     Scoring signals:
@@ -273,8 +283,40 @@ def get_recommendations(student, query=''):
     # Use knowledge graph for eligibility
     reachable = get_reachable_courses(completed_ids)
 
-    all_courses = Course.query.all()
+    # Scope candidates to the student's actual program requirements (real
+    # CSEN + approved non-CSEN electives) rather than the entire catalog.
+    # Falls back to the full catalog if the program isn't resolved or has
+    # no linked courses yet (e.g. programs we haven't populated electives for).
+    program = _resolve_program_for_student(student)
+    program_requirements = (program.requirements or {}) if program else {}
+    program_course_ids = None
+    if program:
+        program_course_ids = {
+            pc.course_id for pc in
+            ProgramCourse.query.filter_by(program_id=program.program_id).all()
+        }
+
+    if program_course_ids:
+        all_courses = Course.query.filter(Course.id.in_(program_course_ids)).all()
+    else:
+        all_courses = Course.query.all()
+
     candidate_ids = [c.id for c in all_courses if c.id not in taken]
+
+    # Unit caps on certain non-CSEN elective prefixes (e.g. MS-CSEN allows at
+    # most 6 units of EMGT courses). Compute remaining headroom per prefix.
+    elective_caps = program_requirements.get('non_csen_elective_caps', {}) or {}
+    remaining_cap_units = {}
+    if elective_caps and taken:
+        taken_courses = Course.query.filter(Course.id.in_(taken)).all()
+        for cap_prefix, cap_units in elective_caps.items():
+            used = sum(
+                (c.units or 0) for c in taken_courses
+                if cap_prefix in _course_prefixes(c)
+            )
+            remaining_cap_units[cap_prefix] = max(cap_units - used, 0)
+    elif elective_caps:
+        remaining_cap_units = dict(elective_caps)
 
     # Batch compute collaborative scores
     collab_scores = get_collaborative_scores(student.id, completed_ids, candidate_ids)
@@ -310,16 +352,24 @@ def get_recommendations(student, query=''):
                 })
 
         prefix = _subject_prefix(course.id)
+        prefixes = _course_prefixes(course)
         blob = _course_search_blob(course)
+
+        # --- Non-CSEN elective unit caps (e.g. EMGT capped at 6 units) ---
+        cap_exceeded_prefix = None
+        for cap_prefix, remaining in remaining_cap_units.items():
+            if cap_prefix in prefixes and (course.units or 0) > remaining:
+                cap_exceeded_prefix = cap_prefix
+                break
 
         if query_focus and query_focus['exclude_prefixes']:
             ep = query_focus['exclude_prefixes']
             excluded = False
-            if prefix and prefix in ep:
+            if prefixes & ep:
                 excluded = True
             elif ep & CS_SUBJECT_PREFIXES:
                 dept = (course.department or '').lower()
-                if prefix in CS_SUBJECT_PREFIXES or 'computer' in dept:
+                if prefixes & CS_SUBJECT_PREFIXES or 'computer' in dept:
                     excluded = True
             if excluded:
                 continue
@@ -330,7 +380,7 @@ def get_recommendations(student, query=''):
         )
 
         # --- Interest / topic match ---
-        if not (cs_query_excluded and prefix in CS_SUBJECT_PREFIXES):
+        if not (cs_query_excluded and prefixes & CS_SUBJECT_PREFIXES):
             for topic in (course.topics or []):
                 if topic.lower() in [i.lower() for i in interests]:
                     score += 30
@@ -356,12 +406,13 @@ def get_recommendations(student, query=''):
 
         # --- Query alignment (follow what the user asked) ---
         if query_focus:
-            if query_focus['include_prefixes'] and prefix in query_focus['include_prefixes']:
+            matched_prefixes = prefixes & query_focus['include_prefixes']
+            if matched_prefixes:
                 pts = 45
                 score += pts
                 factors.append({
                     "type": "query",
-                    "description": f"Matches requested subject ({prefix})",
+                    "description": f"Matches requested subject ({'/'.join(sorted(matched_prefixes))})",
                     "points": pts,
                 })
 
@@ -407,21 +458,34 @@ def get_recommendations(student, query=''):
                     "points": 0,
                 })
 
-        # Build top-level match reason from highest-point factor
-        top_factor = max(factors, key=lambda f: f['points']) if factors else None
-        match_reason = top_factor['description'] if top_factor else "Complements your academic profile"
+        if cap_exceeded_prefix:
+            cap_units = elective_caps.get(cap_exceeded_prefix)
+            factors.append({
+                "type": "elective_cap",
+                "description": f"Would exceed the {cap_units}-unit {cap_exceeded_prefix} elective cap for your program",
+                "points": 0,
+            })
+
+        # Build top-level match reason. The elective cap is a hard blocker, so
+        # it takes priority over the highest-point factor when it applies.
+        if cap_exceeded_prefix:
+            match_reason = factors[-1]['description']
+        else:
+            top_factor = max(factors, key=lambda f: f['points']) if factors else None
+            match_reason = top_factor['description'] if top_factor else "Complements your academic profile"
 
         scored.append({
             'course': course,
             'score': score,
-            'eligible': prereqs_met,
+            'eligible': prereqs_met and not cap_exceeded_prefix,
             'matchReason': match_reason,
             'explanationFactors': factors,
             'predictedGrade': grade_prediction,
         })
 
     scored.sort(key=lambda x: x['score'], reverse=True)
-    top = scored[:6]
+    safe_limit = max(int(limit or 6), 1)
+    top = scored[:safe_limit]
 
     return [
         {

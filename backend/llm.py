@@ -2,10 +2,16 @@
 
 Provides: advisory message generation with explainability-aware prompting.
 """
+import logging
 import os
 from openai import OpenAI
 
+from services import _parse_query_focus, _subject_prefix
+
+logger = logging.getLogger(__name__)
+
 _client = None
+DEFAULT_CHAT_MODEL = os.getenv("OPENAI_CHAT_MODEL", "gpt-4o-mini")
 
 
 def _get_client():
@@ -64,6 +70,25 @@ def get_advisory_message(student, query: str, recommendations: list) -> str:
         "If a course might lower their GPA, briefly mention the trade-off."
     )
 
+    # If the student named specific subjects but none of the recommended
+    # courses are actually in those subjects, tell the model plainly instead
+    # of letting it present unrelated courses as if they satisfy the ask.
+    query_focus = _parse_query_focus(query)
+    if query_focus and query_focus['include_prefixes']:
+        rec_prefixes = set()
+        for c in recommendations:
+            rec_prefixes.add(_subject_prefix(c.get('course_number', '')))
+            for alt in c.get('alt_codes', []) or []:
+                rec_prefixes.add(_subject_prefix(alt))
+        if not (rec_prefixes & query_focus['include_prefixes']):
+            requested = '/'.join(sorted(query_focus['include_prefixes']))
+            system_prompt += (
+                f" IMPORTANT: the student specifically asked about {requested} courses, but none of the "
+                f"courses below are actually in that subject. Say this plainly up front (e.g. \"there aren't "
+                f"any {requested} courses that fit right now\"), then explain why the alternatives below are "
+                f"still worth considering. Do not present them as if they satisfy the {requested} request."
+            )
+
     user_content = (
         f"Student: {student.name}, {student.year} studying {student.major}.\n"
         f"University: {student.university or 'not specified'}.\n"
@@ -79,7 +104,7 @@ def get_advisory_message(student, query: str, recommendations: list) -> str:
 
     try:
         response = client.chat.completions.create(
-            model="gpt-4o-mini",
+            model=DEFAULT_CHAT_MODEL,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_content},
@@ -89,7 +114,7 @@ def get_advisory_message(student, query: str, recommendations: list) -> str:
         )
         return response.choices[0].message.content.strip()
     except Exception as e:
-        print(f"[llm] OpenAI call failed: {e}")
+        logger.warning("OpenAI advisory call failed: %s", e)
         return _fallback_message(student, query, recommendations)
 
 
