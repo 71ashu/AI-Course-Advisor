@@ -130,39 +130,43 @@ export default function CourseAdvisor({ student, onLogout }) {
         onOpenMobile={() => setMobileNavOpen(true)}
       />
 
-      <main className="relative z-10 flex-1 min-h-screen overflow-y-auto">
-        <div className="max-w-6xl mx-auto px-6 pt-16 pb-10 lg:px-10 lg:pt-10">
-          {activeTab === 'dashboard' && (
-            <DashboardPanel
-              studentProfile={studentProfile}
-              degreeProgress={degreeProgress}
-              onAskAdvisor={() => goToAdvisorWithPrompt('What courses should I take next semester?')}
-            />
-          )}
+      <main
+        className={`relative z-10 flex-1 min-h-screen min-w-0 ${
+          activeTab === 'advisor' ? 'flex flex-col overflow-hidden h-screen' : 'overflow-y-auto'
+        }`}
+      >
+        {activeTab === 'advisor' ? (
+          <AdvisorTab
+            chatHistory={chatHistory}
+            isLoading={isLoading}
+            query={query}
+            setQuery={setQuery}
+            handleKeyPress={handleKeyPress}
+            handleAskAdvisor={handleAskAdvisor}
+          />
+        ) : (
+          <div className="max-w-6xl mx-auto px-6 pt-16 pb-10 lg:px-10 lg:pt-10">
+            {activeTab === 'dashboard' && (
+              <DashboardPanel
+                studentProfile={studentProfile}
+                degreeProgress={degreeProgress}
+                onAskAdvisor={() => goToAdvisorWithPrompt('What courses should I take next semester?')}
+              />
+            )}
 
-          {activeTab === 'advisor' && (
-            <AdvisorTab
-              chatHistory={chatHistory}
-              isLoading={isLoading}
-              query={query}
-              setQuery={setQuery}
-              handleKeyPress={handleKeyPress}
-              handleAskAdvisor={handleAskAdvisor}
-            />
-          )}
+            {activeTab === 'progress' && (
+              <ProgressPanel
+                degreeProgress={degreeProgress}
+                progressCoursesTab={progressCoursesTab}
+                setProgressCoursesTab={setProgressCoursesTab}
+              />
+            )}
 
-          {activeTab === 'progress' && (
-            <ProgressPanel
-              degreeProgress={degreeProgress}
-              progressCoursesTab={progressCoursesTab}
-              setProgressCoursesTab={setProgressCoursesTab}
-            />
-          )}
-
-          {activeTab === 'profile' && (
-            <ProfilePanel studentProfile={studentProfile} />
-          )}
-        </div>
+            {activeTab === 'profile' && (
+              <ProfilePanel studentProfile={studentProfile} />
+            )}
+          </div>
+        )}
       </main>
     </div>
   );
