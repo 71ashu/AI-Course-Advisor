@@ -1,20 +1,21 @@
 import React, { useState, useEffect } from 'react';
-import { TrendingUp, MessageSquare, User, LogOut } from 'lucide-react';
 import { api } from './api';
 import AdvisorTab from './components/course-advisor/AdvisorTab';
+import AppSidebar from './components/course-advisor/AppSidebar';
+import DashboardPanel from './components/course-advisor/DashboardPanel';
 import ProfilePanel from './components/course-advisor/ProfilePanel';
 import ProgressPanel from './components/course-advisor/ProgressPanel';
 import OnboardingQuiz from './components/course-advisor/OnboardingQuiz';
 
 export default function CourseAdvisor({ student, onLogout }) {
   const [studentProfile, setStudentProfile] = useState(student);
-  const [activeTab, setActiveTab] = useState('advisor');
+  const [activeTab, setActiveTab] = useState('dashboard');
   const [query, setQuery] = useState('');
   const [chatHistory, setChatHistory] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [degreeProgress, setDegreeProgress] = useState(null);
-  const [showProfile, setShowProfile] = useState(false);
   const [progressCoursesTab, setProgressCoursesTab] = useState('current');
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   const isColdStart = !studentProfile?.onboardingCompleted
     && (studentProfile?.completedCourses?.length || 0) === 0
@@ -85,6 +86,12 @@ export default function CourseAdvisor({ student, onLogout }) {
     }
   };
 
+  const goToAdvisorWithPrompt = (prompt) => {
+    setQuery(prompt);
+    setActiveTab('advisor');
+    setMobileNavOpen(false);
+  };
+
   if (isColdStart) {
     return (
       <div className="min-h-screen bg-app-shell text-white font-sans">
@@ -106,92 +113,57 @@ export default function CourseAdvisor({ student, onLogout }) {
   }
 
   return (
-    <div className="min-h-screen bg-app-shell text-white font-sans">
+    <div className="min-h-screen bg-app-shell text-white font-sans flex">
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
         <div className="absolute top-20 left-20 w-96 h-96 bg-violet-600/10 rounded-full blur-3xl animate-pulse" />
         <div className="absolute bottom-20 right-20 w-96 h-96 bg-fuchsia-600/10 rounded-full blur-3xl animate-pulse delay-1000" />
       </div>
 
-      <div className="relative z-10 max-w-7xl mx-auto px-6 py-8">
-        <header className="mb-12">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-5xl font-black mb-2 bg-gradient-to-r from-violet-400 via-fuchsia-400 to-violet-400 bg-clip-text text-transparent">
-                AI Course Advisor
-              </h1>
-              <p className="text-slate-400 text-lg">Your intelligent academic planning companion</p>
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setShowProfile(!showProfile)}
-                className="flex items-center gap-2 px-4 py-2 bg-violet-500/20 hover:bg-violet-500/30 border border-violet-500/50 rounded-lg transition-colors"
-              >
-                <User className="w-4 h-4" />
-                <span>Profile</span>
-              </button>
-              <button
-                onClick={onLogout}
-                className="flex items-center gap-2 px-4 py-2 bg-slate-700/50 hover:bg-slate-600/50 border border-slate-600/50 rounded-lg transition-colors"
-              >
-                <LogOut className="w-4 h-4" />
-                <span>Logout</span>
-              </button>
-            </div>
-          </div>
-        </header>
+      <AppSidebar
+        studentProfile={studentProfile}
+        degreeProgress={degreeProgress}
+        activeTab={activeTab}
+        onNavigate={setActiveTab}
+        onLogout={onLogout}
+        mobileOpen={mobileNavOpen}
+        onCloseMobile={() => setMobileNavOpen(false)}
+        onOpenMobile={() => setMobileNavOpen(true)}
+      />
 
-        {showProfile && (
-          <div className="mb-8">
-            <ProfilePanel studentProfile={studentProfile} />
-          </div>
-        )}
+      <main className="relative z-10 flex-1 min-h-screen overflow-y-auto">
+        <div className="max-w-6xl mx-auto px-6 pt-16 pb-10 lg:px-10 lg:pt-10">
+          {activeTab === 'dashboard' && (
+            <DashboardPanel
+              studentProfile={studentProfile}
+              degreeProgress={degreeProgress}
+              onAskAdvisor={() => goToAdvisorWithPrompt('What courses should I take next semester?')}
+            />
+          )}
 
-        <div className="flex gap-2 mb-8 bg-slate-800/50 p-1.5 rounded-xl border border-slate-700/50 w-fit">
-          <button
-            onClick={() => setActiveTab('advisor')}
-            className={`px-6 py-3 rounded-lg font-semibold transition-all duration-300 ${
-              activeTab === 'advisor'
-                ? 'bg-violet-500 text-white shadow-lg shadow-violet-500/50'
-                : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            <MessageSquare className="w-4 h-4 inline mr-2" />
-            Ask Advisor
-          </button>
-          <button
-            onClick={() => setActiveTab('progress')}
-            className={`px-6 py-3 rounded-lg font-semibold transition-all duration-300 ${
-              activeTab === 'progress'
-                ? 'bg-violet-500 text-white shadow-lg shadow-violet-500/50'
-                : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            <TrendingUp className="w-4 h-4 inline mr-2" />
-            Progress
-          </button>
-        </div>
+          {activeTab === 'advisor' && (
+            <AdvisorTab
+              chatHistory={chatHistory}
+              isLoading={isLoading}
+              query={query}
+              setQuery={setQuery}
+              handleKeyPress={handleKeyPress}
+              handleAskAdvisor={handleAskAdvisor}
+            />
+          )}
 
-        {activeTab === 'advisor' && (
-          <AdvisorTab
-            chatHistory={chatHistory}
-            isLoading={isLoading}
-            query={query}
-            setQuery={setQuery}
-            handleKeyPress={handleKeyPress}
-            handleAskAdvisor={handleAskAdvisor}
-          />
-        )}
-
-        {activeTab === 'progress' && (
-          <div>
+          {activeTab === 'progress' && (
             <ProgressPanel
               degreeProgress={degreeProgress}
               progressCoursesTab={progressCoursesTab}
               setProgressCoursesTab={setProgressCoursesTab}
             />
-          </div>
-        )}
-      </div>
+          )}
+
+          {activeTab === 'profile' && (
+            <ProfilePanel studentProfile={studentProfile} />
+          )}
+        </div>
+      </main>
     </div>
   );
 }
