@@ -11,6 +11,7 @@ export default function App() {
   const [authLoading, setAuthLoading] = useState(false);
   const [universities, setUniversities] = useState(['Santa Clara University']);
   const [programs, setPrograms] = useState(['MS Computer Science and Engineering']);
+  const [courses, setCourses] = useState([]);
   const [selectedUniversity, setSelectedUniversity] = useState('Santa Clara University');
   const [forgotMessage, setForgotMessage] = useState('');
   const [devResetLink, setDevResetLink] = useState('');
@@ -65,6 +66,14 @@ export default function App() {
       });
   }, []);
 
+  useEffect(() => {
+    api.getCourses()
+      .then(({ courses: catalogCourses }) => setCourses(Array.isArray(catalogCourses) ? catalogCourses : []))
+      .catch(() => {
+        // Transcript course picker is optional; leave it empty if unavailable.
+      });
+  }, []);
+
   const handleAuth = async (e) => {
     e.preventDefault();
     setAuthError('');
@@ -81,6 +90,17 @@ export default function App() {
       interests: (form.interests?.value || '').split(',').map(s => s.trim()).filter(Boolean),
       careerGoals: form.careerGoals?.value || '',
     };
+
+    if (form.transcript?.value) {
+      try {
+        const completedCourses = JSON.parse(form.transcript.value);
+        if (Array.isArray(completedCourses) && completedCourses.length > 0) {
+          data.completedCourses = completedCourses;
+        }
+      } catch {
+        // Ignore a malformed transcript payload rather than blocking registration.
+      }
+    }
 
     try {
       const res = authMode === 'login'
@@ -181,6 +201,7 @@ export default function App() {
         onSwitchToLogin={handleSwitchToLogin}
         universities={universities}
         programs={programs}
+        courses={courses}
         selectedUniversity={selectedUniversity}
         setSelectedUniversity={setSelectedUniversity}
         forgotMessage={forgotMessage}

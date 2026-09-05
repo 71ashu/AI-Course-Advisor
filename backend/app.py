@@ -16,7 +16,7 @@ from sqlalchemy import func
 from config import Config
 from mailer import is_email_configured, send_password_reset_email
 from models import db, Course, Program, ProgramCourse, PasswordResetToken, Student, StudentCourse
-from services import get_degree_progress, get_recommendations
+from services import get_degree_progress, get_recommendations, calculate_program_gpa
 from llm import get_advisory_message
 from knowledge_graph import get_path_to_course, get_graph_summary
 
@@ -126,8 +126,18 @@ def register():
     )
     student.set_password(data['password'])
     db.session.add(student)
+    db.session.flush()
+
+    # Optional transcript submitted at registration: completed coursework and
+    # in-progress courses, each with the grade earned so far.
+    if data.get('completedCourses'):
+        _sync_student_courses(student.id, 'completed', data['completedCourses'])
+        student.program_gpa = calculate_program_gpa(student)
+    if data.get('currentCourses'):
+        _sync_student_courses(student.id, 'current', data['currentCourses'])
+
     db.session.commit()
-    
+
     session.permanent = True
     session['student_id'] = student.id
     return jsonify({'student': student.to_dict()})
