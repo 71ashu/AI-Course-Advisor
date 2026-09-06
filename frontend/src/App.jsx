@@ -70,22 +70,20 @@ export default function App() {
     setAuthError('');
     setAuthLoading(true);
     const form = e.target;
-    const data = {
-      email: form.email.value,
-      password: form.password.value,
-      name: form.name?.value,
-      university: form.university?.value,
-      program: form.program?.value,
-      major: form.major?.value || 'Computer Science',
-      year: form.year?.value || 'Sophomore',
-      interests: (form.interests?.value || '').split(',').map(s => s.trim()).filter(Boolean),
-      careerGoals: form.careerGoals?.value || '',
-    };
 
     try {
-      const res = authMode === 'login'
-        ? await api.login(data)
-        : await api.register(data);
+      let res;
+      if (authMode === 'login') {
+        res = await api.login({
+          email: form.email.value,
+          password: form.password.value,
+        });
+      } else {
+        // Sent as multipart form data so the optional transcript PDF upload
+        // (parsed server-side into completed courses and grades) rides
+        // along with the rest of the registration fields.
+        res = await api.register(new FormData(form));
+      }
       setStudent(res.student);
     } catch (err) {
       setAuthError(err.message);

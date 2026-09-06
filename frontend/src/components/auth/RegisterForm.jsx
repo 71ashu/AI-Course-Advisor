@@ -1,3 +1,5 @@
+import { FileText } from 'lucide-react';
+
 export default function RegisterForm({
   onSubmit,
   authError,
@@ -81,6 +83,24 @@ export default function RegisterForm({
         placeholder="Career goals"
         className="w-full bg-slate-700/50 border border-slate-600/50 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-violet-500/50"
       />
+
+      <div className="border border-slate-600/50 rounded-xl p-4 space-y-2">
+        <div className="flex items-center gap-2">
+          <FileText className="w-4 h-4 text-violet-400" />
+          <h3 className="text-sm font-semibold text-slate-200">Academic transcript (optional)</h3>
+        </div>
+        <p className="text-xs text-slate-500">
+          Upload a PDF of your transcript and we'll pull in your completed courses and
+          grades so your profile starts off reflecting your real progress.
+        </p>
+        <input
+          type="file"
+          name="transcript"
+          accept="application/pdf"
+          className="w-full text-sm text-slate-300 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-violet-500/20 file:text-violet-300 file:font-medium file:cursor-pointer hover:file:bg-violet-500/30 cursor-pointer"
+        />
+      </div>
+
       {authError && <p className="text-rose-400 text-sm">{authError}</p>}
       <button
         type="submit"
