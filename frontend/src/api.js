@@ -50,9 +50,9 @@ export const api = {
   getPrograms: () => request('/programs'),
 
   // Advisor
-  getRecommendations: (query, history = []) => request('/recommend', {
+  getRecommendations: (query) => request('/recommend', {
     method: 'POST',
-    body: JSON.stringify({ query, history }),
+    body: JSON.stringify({ query }),
   }),
   getProgress: () => request('/progress'),
 
