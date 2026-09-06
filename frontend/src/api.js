@@ -6,11 +6,13 @@
 const API_BASE = '/api';
 
 async function request(endpoint, options = {}) {
+  const isFormData = options.body instanceof FormData;
   const res = await fetch(`${API_BASE}${endpoint}`, {
     ...options,
     credentials: 'include',
     headers: {
-      'Content-Type': 'application/json',
+      // Let the browser set the multipart Content-Type (with boundary) itself.
+      ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
       ...options.headers,
     },
   });
@@ -23,7 +25,10 @@ async function request(endpoint, options = {}) {
 
 export const api = {
   // Auth
-  register: (data) => request('/auth/register', { method: 'POST', body: JSON.stringify(data) }),
+  register: (data) => request('/auth/register', {
+    method: 'POST',
+    body: data instanceof FormData ? data : JSON.stringify(data),
+  }),
   login: (data) => request('/auth/login', { method: 'POST', body: JSON.stringify(data) }),
   forgotPassword: (data) => request('/auth/forgot-password', {
     method: 'POST',

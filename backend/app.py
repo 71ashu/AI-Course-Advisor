@@ -17,6 +17,7 @@ from config import Config
 from mailer import is_email_configured, send_password_reset_email
 from models import db, Course, Program, ProgramCourse, PasswordResetToken, Student, StudentCourse
 from services import get_degree_progress, get_recommendations, calculate_program_gpa
+from transcript_parser import parse_transcript_pdf, GRADE_POINTS
 from llm import get_advisory_message
 from knowledge_graph import get_path_to_course, get_graph_summary
 
@@ -98,9 +99,46 @@ def _sync_student_courses(student_id, status, course_items):
 
 # ============ Auth Routes ============
 
+def _build_course_lookup():
+    """Map normalized course codes (and alt codes) to their canonical course id."""
+    lookup = {}
+    for course in Course.query.all():
+        lookup[course.id.replace(' ', '').upper()] = course.id
+        for alt in (course.alt_codes or []):
+            lookup[alt.replace(' ', '').upper()] = course.id
+    return lookup
+
+
+def _completed_courses_from_transcript_pdf(file_storage):
+    """Parse an uploaded transcript PDF into completedCourses-style items,
+    matching each detected course code against the known course catalog."""
+    course_lookup = _build_course_lookup()
+    parsed_grades = parse_transcript_pdf(file_storage.stream)
+
+    items = []
+    for parsed_code, grade in parsed_grades.items():
+        course_id = course_lookup.get(parsed_code.replace(' ', '').upper())
+        if not course_id:
+            continue
+        items.append({
+            'courseId': course_id,
+            'finalLetter': grade,
+            'courseGPA': GRADE_POINTS.get(grade),
+        })
+    return items
+
+
 @app.route('/api/auth/register', methods=['POST'])
 def register():
-    data = request.json
+    transcript_file = None
+    if request.content_type and request.content_type.startswith('multipart/form-data'):
+        data = request.form.to_dict()
+        interests_raw = request.form.get('interests', '')
+        data['interests'] = [s.strip() for s in interests_raw.split(',') if s.strip()]
+        transcript_file = request.files.get('transcript')
+    else:
+        data = request.json
+
     if (
         not data
         or not data.get('email')
@@ -110,17 +148,17 @@ def register():
         or not data.get('program')
     ):
         return jsonify({'error': 'Email, password, name, university, and program are required'}), 400
-    
+
     if Student.query.filter_by(email=data['email']).first():
         return jsonify({'error': 'Email already registered'}), 409
-    
+
     student = Student(
         email=data['email'],
         name=data['name'],
         university=data['university'],
         program_enrolled=data['program'],
-        major=data.get('major', 'Computer Science'),
-        year=data.get('year', 'Sophomore'),
+        major=data.get('major') or 'Computer Science',
+        year=data.get('year') or 'Sophomore',
         interests=data.get('interests', []),
         career_goals=data.get('careerGoals', ''),
     )
@@ -128,10 +166,17 @@ def register():
     db.session.add(student)
     db.session.flush()
 
-    # Optional transcript submitted at registration: completed coursework and
-    # in-progress courses, each with the grade earned so far.
-    if data.get('completedCourses'):
-        _sync_student_courses(student.id, 'completed', data['completedCourses'])
+    # Optional transcript submitted at registration: either a PDF upload
+    # (parsed against the course catalog) or, for API/back-compat callers,
+    # a structured completedCourses/currentCourses payload.
+    completed_courses = None
+    if transcript_file and transcript_file.filename:
+        completed_courses = _completed_courses_from_transcript_pdf(transcript_file)
+    elif data.get('completedCourses'):
+        completed_courses = data['completedCourses']
+
+    if completed_courses:
+        _sync_student_courses(student.id, 'completed', completed_courses)
         student.program_gpa = calculate_program_gpa(student)
     if data.get('currentCourses'):
         _sync_student_courses(student.id, 'current', data['currentCourses'])

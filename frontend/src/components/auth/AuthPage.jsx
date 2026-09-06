@@ -17,7 +17,6 @@ export default function AuthPage({
   onSwitchToLogin,
   universities,
   programs,
-  courses,
   selectedUniversity,
   setSelectedUniversity,
   forgotMessage,
@@ -84,7 +83,6 @@ export default function AuthPage({
               authLoading={authLoading}
               universities={universities}
               programs={programs}
-              courses={courses}
               selectedUniversity={selectedUniversity}
               setSelectedUniversity={setSelectedUniversity}
             />

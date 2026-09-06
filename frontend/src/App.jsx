@@ -11,7 +11,6 @@ export default function App() {
   const [authLoading, setAuthLoading] = useState(false);
   const [universities, setUniversities] = useState(['Santa Clara University']);
   const [programs, setPrograms] = useState(['MS Computer Science and Engineering']);
-  const [courses, setCourses] = useState([]);
   const [selectedUniversity, setSelectedUniversity] = useState('Santa Clara University');
   const [forgotMessage, setForgotMessage] = useState('');
   const [devResetLink, setDevResetLink] = useState('');
@@ -66,46 +65,25 @@ export default function App() {
       });
   }, []);
 
-  useEffect(() => {
-    api.getCourses()
-      .then(({ courses: catalogCourses }) => setCourses(Array.isArray(catalogCourses) ? catalogCourses : []))
-      .catch(() => {
-        // Transcript course picker is optional; leave it empty if unavailable.
-      });
-  }, []);
-
   const handleAuth = async (e) => {
     e.preventDefault();
     setAuthError('');
     setAuthLoading(true);
     const form = e.target;
-    const data = {
-      email: form.email.value,
-      password: form.password.value,
-      name: form.name?.value,
-      university: form.university?.value,
-      program: form.program?.value,
-      major: form.major?.value || 'Computer Science',
-      year: form.year?.value || 'Sophomore',
-      interests: (form.interests?.value || '').split(',').map(s => s.trim()).filter(Boolean),
-      careerGoals: form.careerGoals?.value || '',
-    };
-
-    if (form.transcript?.value) {
-      try {
-        const completedCourses = JSON.parse(form.transcript.value);
-        if (Array.isArray(completedCourses) && completedCourses.length > 0) {
-          data.completedCourses = completedCourses;
-        }
-      } catch {
-        // Ignore a malformed transcript payload rather than blocking registration.
-      }
-    }
 
     try {
-      const res = authMode === 'login'
-        ? await api.login(data)
-        : await api.register(data);
+      let res;
+      if (authMode === 'login') {
+        res = await api.login({
+          email: form.email.value,
+          password: form.password.value,
+        });
+      } else {
+        // Sent as multipart form data so the optional transcript PDF upload
+        // (parsed server-side into completed courses and grades) rides
+        // along with the rest of the registration fields.
+        res = await api.register(new FormData(form));
+      }
       setStudent(res.student);
     } catch (err) {
       setAuthError(err.message);
@@ -201,7 +179,6 @@ export default function App() {
         onSwitchToLogin={handleSwitchToLogin}
         universities={universities}
         programs={programs}
-        courses={courses}
         selectedUniversity={selectedUniversity}
         setSelectedUniversity={setSelectedUniversity}
         forgotMessage={forgotMessage}
