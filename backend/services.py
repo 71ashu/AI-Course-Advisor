@@ -111,6 +111,82 @@ def _parse_query_focus(query):
     }
 
 
+def find_course_by_query(query):
+    """Find a single course explicitly named by code in free-text (e.g. "tell me
+    about CSEN 342" or "what's CS101 like?"). Returns None if the query doesn't
+    name a specific, known course — that's the signal to fall back to ranking
+    the whole catalog instead of answering about one course."""
+    if not (query or '').strip():
+        return None
+
+    tokens = re.findall(r'\b[A-Za-z]{2,6}\s?-?\s?\d{3}[A-Za-z]?\b', query)
+    if not tokens:
+        return None
+
+    lookup = {}
+    for course in Course.query.all():
+        lookup[course.id.replace(' ', '').upper()] = course
+        for alt in (course.alt_codes or []):
+            lookup[alt.replace(' ', '').upper()] = course
+
+    for token in tokens:
+        normalized = re.sub(r'[\s-]+', '', token).upper()
+        if normalized in lookup:
+            return lookup[normalized]
+    return None
+
+
+def get_course_detail(student, course):
+    """Build a single-course payload (same shape as a recommendation item) for
+    conversational Q&A about one specific course: is the student eligible,
+    have they already taken it, what would they likely score."""
+    completed_ids = {
+        sc.course_id for sc in
+        StudentCourse.query.filter_by(student_id=student.id, status='completed').all()
+    }
+    current_ids = {
+        sc.course_id for sc in
+        StudentCourse.query.filter_by(student_id=student.id, status='current').all()
+    }
+
+    status = 'completed' if course.id in completed_ids else 'current' if course.id in current_ids else None
+
+    reachable = get_reachable_courses(completed_ids)
+    prereqs_met = course.id in reachable
+    missing_prereqs = []
+    if not prereqs_met:
+        path = get_path_to_course(completed_ids, course.id)
+        missing_prereqs = [
+            Course.query.get(cid).name for cid in path
+            if cid != course.id and Course.query.get(cid)
+        ]
+
+    student_gpa = student.program_gpa or 0.0
+    grade_prediction = (
+        predict_grade(student_gpa, course.id)
+        if student_gpa > 0 and status is None else None
+    )
+
+    if status == 'completed':
+        match_reason = 'Already on your completed courses list'
+    elif status == 'current':
+        match_reason = "You're currently taking this"
+    elif prereqs_met:
+        match_reason = 'All prerequisites completed'
+    else:
+        match_reason = f"Still need: {', '.join(missing_prereqs)}" if missing_prereqs else 'Prerequisites not yet met'
+
+    return {
+        **course.to_dict(),
+        'eligible': prereqs_met,
+        'status': status,
+        'missingPrerequisites': missing_prereqs,
+        'matchReason': match_reason,
+        'explanationFactors': [],
+        'predictedGrade': grade_prediction,
+    }
+
+
 def _serialize_progress_course(enrollment):
     course = Course.query.get(enrollment.course_id)
     if not course:
