@@ -16,8 +16,11 @@ from sqlalchemy import func
 from config import Config
 from mailer import is_email_configured, send_password_reset_email
 from models import db, Course, Program, ProgramCourse, PasswordResetToken, Student, StudentCourse
-from services import get_degree_progress, get_recommendations
-from llm import get_advisory_message
+from services import (
+    get_degree_progress, get_recommendations,
+    find_course_by_query, get_course_detail,
+)
+from llm import get_advisory_message, get_course_detail_message
 from knowledge_graph import get_path_to_course, get_graph_summary
 
 app = Flask(__name__)
@@ -282,9 +285,19 @@ def recommend():
     
     data = request.json or {}
     query = data.get('query', '')
+    history = data.get('history') or []
+
+    # If the student named a specific course by code (e.g. "tell me about
+    # CSEN 342"), answer conversationally about that one course instead of
+    # framing the reply around a ranked recommendation list.
+    named_course = find_course_by_query(query)
+    if named_course:
+        detail = get_course_detail(student, named_course)
+        message = get_course_detail_message(student, query, detail, history=history)
+        return jsonify({'recommendations': [detail], 'message': message})
 
     recommendations = get_recommendations(student, query)
-    message = get_advisory_message(student, query, recommendations)
+    message = get_advisory_message(student, query, recommendations, history=history)
     return jsonify({'recommendations': recommendations, 'message': message})
 
 @app.route('/api/progress', methods=['GET'])

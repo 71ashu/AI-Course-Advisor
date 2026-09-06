@@ -54,12 +54,15 @@ export default function CourseAdvisor({ student, onLogout }) {
     if (!query.trim()) return;
 
     const userMessage = { role: 'user', content: query };
+    const priorTurns = chatHistory
+      .filter((m) => m.role === 'user' || m.role === 'assistant')
+      .map(({ role, content }) => ({ role, content }));
     setChatHistory((prev) => [...prev, userMessage]);
     setQuery('');
     setIsLoading(true);
 
     try {
-      const { recommendations: recs, message } = await api.getRecommendations(query);
+      const { recommendations: recs, message } = await api.getRecommendations(query, priorTurns);
 
       const aiMessage = {
         role: 'assistant',
