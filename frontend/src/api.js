@@ -44,10 +44,20 @@ export const api = {
   getCourses: () => request('/courses'),
   getPrograms: () => request('/programs'),
 
+  // Conversations
+  listConversations: () => request('/conversations'),
+  createConversation: () => request('/conversations', { method: 'POST' }),
+  getConversation: (id) => request(`/conversations/${id}`),
+  renameConversation: (id, title) => request(`/conversations/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ title }),
+  }),
+  deleteConversation: (id) => request(`/conversations/${id}`, { method: 'DELETE' }),
+
   // Advisor
-  getRecommendations: (query, history = []) => request('/recommend', {
+  getRecommendations: (query, { conversationId = null, history = [] } = {}) => request('/recommend', {
     method: 'POST',
-    body: JSON.stringify({ query, history }),
+    body: JSON.stringify({ query, conversationId, history }),
   }),
   getProgress: () => request('/progress'),
 

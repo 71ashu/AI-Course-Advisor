@@ -104,7 +104,12 @@ New user registration triggers the onboarding quiz for cold start handling.
 | GET | `/api/profile` | Get profile |
 | PUT | `/api/profile` | Update profile |
 | GET | `/api/courses` | List all courses |
-| POST | `/api/recommend` | Get recommendations |
+| POST | `/api/recommend` | Get recommendations (pass `conversationId` to continue a thread; omit to start one) |
+| GET | `/api/conversations` | List the student's advisor conversations |
+| POST | `/api/conversations` | Create a new empty conversation |
+| GET | `/api/conversations/:id` | Get one conversation with its full message history |
+| PATCH | `/api/conversations/:id` | Rename a conversation |
+| DELETE | `/api/conversations/:id` | Delete a conversation |
 | GET | `/api/progress` | Get degree progress |
 | POST | `/api/onboarding` | Submit onboarding quiz answers |
 | GET | `/api/prerequisite-path?target=CS301` | Get prerequisite path to a course |

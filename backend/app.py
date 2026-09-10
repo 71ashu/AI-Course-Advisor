@@ -15,7 +15,10 @@ from flask_migrate import Migrate
 from sqlalchemy import func
 from config import Config
 from mailer import is_email_configured, send_password_reset_email
-from models import db, Course, Program, ProgramCourse, PasswordResetToken, Student, StudentCourse
+from models import (
+    db, Conversation, Course, Message, Program, ProgramCourse,
+    PasswordResetToken, Student, StudentCourse,
+)
 from services import (
     get_degree_progress, get_recommendations,
     find_course_by_query, get_course_detail,
@@ -275,6 +278,81 @@ def get_courses():
     return jsonify({'courses': [c.to_dict() for c in courses]})
 
 
+# ============ Conversation Routes ============
+
+def _title_from_query(query):
+    """Derive a short conversation title from the first thing the student asked."""
+    text = ' '.join((query or '').strip().split())
+    if not text:
+        return 'New conversation'
+    return text[:60] + ('…' if len(text) > 60 else '')
+
+
+def _resolve_conversation(student, conversation_id):
+    """Return (conversation, error_response). Creates a new one when id is falsy."""
+    if conversation_id:
+        convo = Conversation.query.filter_by(
+            id=conversation_id, student_id=student.id
+        ).first()
+        if not convo:
+            return None, (jsonify({'error': 'Conversation not found'}), 404)
+        return convo, None
+
+    convo = Conversation(student_id=student.id)
+    db.session.add(convo)
+    db.session.flush()  # assign convo.id without committing yet
+    return convo, None
+
+
+@app.route('/api/conversations', methods=['GET', 'POST'])
+def conversations():
+    student = get_current_student()
+    if not student:
+        return jsonify({'error': 'Not authenticated'}), 401
+
+    if request.method == 'POST':
+        convo = Conversation(student_id=student.id)
+        db.session.add(convo)
+        db.session.commit()
+        return jsonify({'conversation': convo.to_dict(include_messages=True)})
+
+    rows = (
+        Conversation.query
+        .filter_by(student_id=student.id)
+        .order_by(Conversation.updated_at.desc(), Conversation.id.desc())
+        .all()
+    )
+    return jsonify({'conversations': [c.to_dict() for c in rows]})
+
+
+@app.route('/api/conversations/<int:conversation_id>', methods=['GET', 'PATCH', 'DELETE'])
+def conversation_detail(conversation_id):
+    student = get_current_student()
+    if not student:
+        return jsonify({'error': 'Not authenticated'}), 401
+
+    convo = Conversation.query.filter_by(
+        id=conversation_id, student_id=student.id
+    ).first()
+    if not convo:
+        return jsonify({'error': 'Conversation not found'}), 404
+
+    if request.method == 'GET':
+        return jsonify({'conversation': convo.to_dict(include_messages=True)})
+
+    if request.method == 'PATCH':
+        data = request.json or {}
+        title = (data.get('title') or '').strip()
+        if title:
+            convo.title = title[:200]
+            db.session.commit()
+        return jsonify({'conversation': convo.to_dict()})
+
+    db.session.delete(convo)
+    db.session.commit()
+    return jsonify({'success': True})
+
+
 # ============ Advisor Routes ============
 
 @app.route('/api/recommend', methods=['POST'])
@@ -282,10 +360,23 @@ def recommend():
     student = get_current_student()
     if not student:
         return jsonify({'error': 'Not authenticated'}), 401
-    
+
     data = request.json or {}
     query = data.get('query', '')
-    history = data.get('history') or []
+
+    convo, error = _resolve_conversation(student, data.get('conversationId'))
+    if error:
+        return error
+
+    # Prefer the stored transcript so follow-ups keep working across reloads;
+    # fall back to any client-supplied history for a brand-new conversation.
+    stored = convo.messages.all()
+    history = (
+        [{'role': m.role, 'content': m.content} for m in stored]
+        or (data.get('history') or [])
+    )
+
+    db.session.add(Message(conversation_id=convo.id, role='user', content=query))
 
     # If the student named a specific course by code (e.g. "tell me about
     # CSEN 342"), answer conversationally about that one course instead of
@@ -294,11 +385,26 @@ def recommend():
     if named_course:
         detail = get_course_detail(student, named_course)
         message = get_course_detail_message(student, query, detail, history=history)
-        return jsonify({'recommendations': [detail], 'message': message})
+        recommendations = [detail]
+    else:
+        recommendations = get_recommendations(student, query)
+        message = get_advisory_message(student, query, recommendations, history=history)
 
-    recommendations = get_recommendations(student, query)
-    message = get_advisory_message(student, query, recommendations, history=history)
-    return jsonify({'recommendations': recommendations, 'message': message})
+    db.session.add(Message(
+        conversation_id=convo.id, role='assistant',
+        content=message, recommendations=recommendations,
+    ))
+
+    if convo.title in (None, '', 'New conversation') and query.strip():
+        convo.title = _title_from_query(query)
+    convo.updated_at = datetime.utcnow()
+    db.session.commit()
+
+    return jsonify({
+        'conversationId': convo.id,
+        'recommendations': recommendations,
+        'message': message,
+    })
 
 @app.route('/api/progress', methods=['GET'])
 def progress():

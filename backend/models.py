@@ -146,6 +146,75 @@ class Program(db.Model):
         }
 
 
+class Conversation(db.Model):
+    """A single chat thread between a student and the advisor.
+
+    Students can keep multiple threads; each is an ordered list of messages.
+    """
+
+    __tablename__ = 'conversations'
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    student_id = db.Column(
+        db.Integer,
+        db.ForeignKey('students.id', ondelete='CASCADE'),
+        nullable=False,
+        index=True,
+    )
+    title = db.Column(db.String(200), nullable=False, default='New conversation')
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    student = db.relationship('Student', backref=db.backref('conversations', lazy='dynamic'))
+    messages = db.relationship(
+        'Message',
+        backref='conversation',
+        order_by='Message.created_at, Message.id',
+        cascade='all, delete-orphan',
+        lazy='dynamic',
+    )
+
+    def to_dict(self, include_messages=False):
+        message_rows = self.messages.all()
+        data = {
+            'id': self.id,
+            'title': self.title,
+            'createdAt': self.created_at.isoformat() if self.created_at else None,
+            'updatedAt': self.updated_at.isoformat() if self.updated_at else None,
+            'messageCount': len(message_rows),
+        }
+        if include_messages:
+            data['messages'] = [m.to_dict() for m in message_rows]
+        return data
+
+
+class Message(db.Model):
+    """One turn in a conversation. Assistant turns may carry recommendation cards."""
+
+    __tablename__ = 'messages'
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    conversation_id = db.Column(
+        db.Integer,
+        db.ForeignKey('conversations.id', ondelete='CASCADE'),
+        nullable=False,
+        index=True,
+    )
+    role = db.Column(db.String(20), nullable=False)  # 'user' or 'assistant'
+    content = db.Column(db.Text, nullable=False, default='')
+    recommendations = db.Column(db.JSON, default=list)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'role': self.role,
+            'content': self.content or '',
+            'recommendations': self.recommendations or [],
+            'createdAt': self.created_at.isoformat() if self.created_at else None,
+        }
+
+
 class StudentCourse(db.Model):
     __tablename__ = 'student_courses'
     

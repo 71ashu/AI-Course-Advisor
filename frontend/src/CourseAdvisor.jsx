@@ -13,6 +13,9 @@ export default function CourseAdvisor({ student, onLogout }) {
   const [query, setQuery] = useState('');
   const [chatHistory, setChatHistory] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [conversations, setConversations] = useState([]);
+  const [activeConversationId, setActiveConversationId] = useState(null);
+  const [conversationLoading, setConversationLoading] = useState(false);
   const [degreeProgress, setDegreeProgress] = useState(null);
   const [progressCoursesTab, setProgressCoursesTab] = useState('current');
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
@@ -27,6 +30,7 @@ export default function CourseAdvisor({ student, onLogout }) {
 
   useEffect(() => {
     loadDegreeProgress();
+    loadConversations();
   }, [studentProfile?.id]);
 
   const loadDegreeProgress = async () => {
@@ -36,6 +40,75 @@ export default function CourseAdvisor({ student, onLogout }) {
     } catch {
       setDegreeProgress(null);
     }
+  };
+
+  const loadConversations = async () => {
+    try {
+      const { conversations: rows } = await api.listConversations();
+      setConversations(rows || []);
+    } catch {
+      setConversations([]);
+    }
+  };
+
+  const handleSelectConversation = async (id) => {
+    if (id === activeConversationId) {
+      setActiveTab('advisor');
+      setMobileNavOpen(false);
+      return;
+    }
+    setActiveTab('advisor');
+    setMobileNavOpen(false);
+    setConversationLoading(true);
+    try {
+      const { conversation } = await api.getConversation(id);
+      setChatHistory(
+        (conversation.messages || []).map(({ role, content, recommendations }) => ({
+          role,
+          content,
+          recommendations: recommendations || [],
+        })),
+      );
+      setActiveConversationId(conversation.id);
+    } catch {
+      setChatHistory([]);
+    } finally {
+      setConversationLoading(false);
+    }
+  };
+
+  const handleNewConversation = () => {
+    setActiveConversationId(null);
+    setChatHistory([]);
+    setQuery('');
+    setActiveTab('advisor');
+    setMobileNavOpen(false);
+  };
+
+  const handleRenameConversation = async (id, title) => {
+    const clean = (title || '').trim();
+    if (!clean) return;
+    setConversations((prev) =>
+      prev.map((c) => (c.id === id ? { ...c, title: clean } : c)),
+    );
+    try {
+      await api.renameConversation(id, clean);
+    } catch {
+      loadConversations();
+    }
+  };
+
+  const handleDeleteConversation = async (id) => {
+    try {
+      await api.deleteConversation(id);
+    } catch {
+      // ignore; refresh below reflects real state
+    }
+    if (id === activeConversationId) {
+      setActiveConversationId(null);
+      setChatHistory([]);
+    }
+    loadConversations();
   };
 
   const handleOnboardingComplete = async (answers) => {
@@ -62,7 +135,10 @@ export default function CourseAdvisor({ student, onLogout }) {
     setIsLoading(true);
 
     try {
-      const { recommendations: recs, message } = await api.getRecommendations(query, priorTurns);
+      const { recommendations: recs, message, conversationId } = await api.getRecommendations(query, {
+        conversationId: activeConversationId,
+        history: priorTurns,
+      });
 
       const aiMessage = {
         role: 'assistant',
@@ -71,6 +147,10 @@ export default function CourseAdvisor({ student, onLogout }) {
       };
 
       setChatHistory((prev) => [...prev, aiMessage]);
+      if (conversationId && conversationId !== activeConversationId) {
+        setActiveConversationId(conversationId);
+      }
+      loadConversations();
     } catch {
       const errorMessage = {
         role: 'assistant',
@@ -146,6 +226,14 @@ export default function CourseAdvisor({ student, onLogout }) {
             setQuery={setQuery}
             handleKeyPress={handleKeyPress}
             handleAskAdvisor={handleAskAdvisor}
+            conversations={conversations}
+            activeConversationId={activeConversationId}
+            activeConversation={conversations.find((c) => c.id === activeConversationId) || null}
+            conversationLoading={conversationLoading}
+            onSelectConversation={handleSelectConversation}
+            onNewConversation={handleNewConversation}
+            onDeleteConversation={handleDeleteConversation}
+            onRenameConversation={handleRenameConversation}
           />
         ) : (
           <div className="max-w-6xl mx-auto px-6 pt-16 pb-10 lg:px-10 lg:pt-10">
