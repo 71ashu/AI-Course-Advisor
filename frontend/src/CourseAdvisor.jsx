@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { api } from './api';
 import AdvisorTab from './components/course-advisor/AdvisorTab';
 import AppSidebar from './components/course-advisor/AppSidebar';
@@ -7,9 +8,18 @@ import ProfilePanel from './components/course-advisor/ProfilePanel';
 import ProgressPanel from './components/course-advisor/ProgressPanel';
 import OnboardingQuiz from './components/course-advisor/OnboardingQuiz';
 
+const KNOWN_TABS = ['dashboard', 'advisor', 'progress', 'profile'];
+
 export default function CourseAdvisor({ student, onLogout }) {
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  const segments = location.pathname.split('/').filter(Boolean);
+  const firstSegment = segments[0] || '';
+  const activeTab = KNOWN_TABS.includes(firstSegment) ? firstSegment : 'dashboard';
+  const routeConversationId = activeTab === 'advisor' && segments[1] ? segments[1] : null;
+
   const [studentProfile, setStudentProfile] = useState(student);
-  const [activeTab, setActiveTab] = useState('dashboard');
   const [query, setQuery] = useState('');
   const [chatHistory, setChatHistory] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -33,6 +43,55 @@ export default function CourseAdvisor({ student, onLogout }) {
     loadConversations();
   }, [studentProfile?.id]);
 
+  // Normalize unknown paths (e.g. "/") to the dashboard.
+  useEffect(() => {
+    if (!KNOWN_TABS.includes(firstSegment)) {
+      navigate('/dashboard', { replace: true });
+    }
+  }, [firstSegment, navigate]);
+
+  // Load (or clear) the advisor conversation based on the URL.
+  useEffect(() => {
+    if (activeTab !== 'advisor') return undefined;
+
+    if (!routeConversationId) {
+      setActiveConversationId(null);
+      setChatHistory([]);
+      setConversationLoading(false);
+      return undefined;
+    }
+
+    if (routeConversationId === activeConversationId) return undefined;
+
+    let cancelled = false;
+    setConversationLoading(true);
+    api.getConversation(routeConversationId)
+      .then(({ conversation }) => {
+        if (cancelled) return;
+        setChatHistory(
+          (conversation.messages || []).map(({ role, content, recommendations }) => ({
+            role,
+            content,
+            recommendations: recommendations || [],
+          })),
+        );
+        setActiveConversationId(conversation.id);
+      })
+      .catch(() => {
+        if (!cancelled) setChatHistory([]);
+      })
+      .finally(() => {
+        if (!cancelled) setConversationLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+    // activeConversationId is intentionally excluded: it is set inside this effect
+    // and re-running on that change would wipe an in-progress new conversation.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, routeConversationId]);
+
   const loadDegreeProgress = async () => {
     try {
       const progress = await api.getProgress();
@@ -51,38 +110,24 @@ export default function CourseAdvisor({ student, onLogout }) {
     }
   };
 
-  const handleSelectConversation = async (id) => {
-    if (id === activeConversationId) {
-      setActiveTab('advisor');
-      setMobileNavOpen(false);
+  const handleNavigate = (tab) => {
+    setMobileNavOpen(false);
+    if (tab === 'advisor' && activeConversationId) {
+      navigate(`/advisor/${activeConversationId}`);
       return;
     }
-    setActiveTab('advisor');
+    navigate(`/${tab}`);
+  };
+
+  const handleSelectConversation = (id) => {
     setMobileNavOpen(false);
-    setConversationLoading(true);
-    try {
-      const { conversation } = await api.getConversation(id);
-      setChatHistory(
-        (conversation.messages || []).map(({ role, content, recommendations }) => ({
-          role,
-          content,
-          recommendations: recommendations || [],
-        })),
-      );
-      setActiveConversationId(conversation.id);
-    } catch {
-      setChatHistory([]);
-    } finally {
-      setConversationLoading(false);
-    }
+    navigate(`/advisor/${id}`);
   };
 
   const handleNewConversation = () => {
-    setActiveConversationId(null);
-    setChatHistory([]);
     setQuery('');
-    setActiveTab('advisor');
     setMobileNavOpen(false);
+    navigate('/advisor');
   };
 
   const handleRenameConversation = async (id, title) => {
@@ -107,6 +152,7 @@ export default function CourseAdvisor({ student, onLogout }) {
     if (id === activeConversationId) {
       setActiveConversationId(null);
       setChatHistory([]);
+      if (activeTab === 'advisor') navigate('/advisor');
     }
     loadConversations();
   };
@@ -149,6 +195,7 @@ export default function CourseAdvisor({ student, onLogout }) {
       setChatHistory((prev) => [...prev, aiMessage]);
       if (conversationId && conversationId !== activeConversationId) {
         setActiveConversationId(conversationId);
+        navigate(`/advisor/${conversationId}`, { replace: true });
       }
       loadConversations();
     } catch {
@@ -171,8 +218,8 @@ export default function CourseAdvisor({ student, onLogout }) {
 
   const goToAdvisorWithPrompt = (prompt) => {
     setQuery(prompt);
-    setActiveTab('advisor');
     setMobileNavOpen(false);
+    navigate(activeConversationId ? `/advisor/${activeConversationId}` : '/advisor');
   };
 
   if (isColdStart) {
@@ -206,7 +253,7 @@ export default function CourseAdvisor({ student, onLogout }) {
         studentProfile={studentProfile}
         degreeProgress={degreeProgress}
         activeTab={activeTab}
-        onNavigate={setActiveTab}
+        onNavigate={handleNavigate}
         onLogout={onLogout}
         mobileOpen={mobileNavOpen}
         onCloseMobile={() => setMobileNavOpen(false)}

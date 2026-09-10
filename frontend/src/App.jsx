@@ -1,12 +1,29 @@
 import React, { useState, useEffect } from 'react';
+import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { api } from './api';
 import CourseAdvisor from './CourseAdvisor';
 import AuthPage from './components/auth/AuthPage';
 
+const PATH_TO_AUTH_MODE = {
+  '/login': 'login',
+  '/register': 'register',
+  '/forgot-password': 'forgot',
+  '/reset-password': 'reset',
+};
+
+const AUTH_MODE_TO_PATH = {
+  login: '/login',
+  register: '/register',
+  forgot: '/forgot-password',
+  reset: '/reset-password',
+};
+
 export default function App() {
+  const navigate = useNavigate();
+  const location = useLocation();
+
   const [student, setStudent] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [authMode, setAuthModeState] = useState('login'); // 'login' | 'register' | 'forgot' | 'reset'
   const [authError, setAuthError] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
   const [universities, setUniversities] = useState(['Santa Clara University']);
@@ -15,6 +32,16 @@ export default function App() {
   const [forgotMessage, setForgotMessage] = useState('');
   const [devResetLink, setDevResetLink] = useState('');
   const [resetToken, setResetToken] = useState(null);
+
+  const isAuthPath = location.pathname in PATH_TO_AUTH_MODE;
+  const authMode = PATH_TO_AUTH_MODE[location.pathname] || 'login';
+
+  const setAuthMode = (mode) => {
+    setForgotMessage('');
+    setDevResetLink('');
+    if (mode !== 'reset') setResetToken(null);
+    navigate(AUTH_MODE_TO_PATH[mode] || '/login');
+  };
 
   useEffect(() => {
     api.me()
@@ -28,11 +55,10 @@ export default function App() {
     const t = params.get('reset_token');
     if (t) {
       setResetToken(t);
-      setAuthModeState('reset');
       setAuthError('');
-      window.history.replaceState({}, '', window.location.pathname + window.location.hash);
+      navigate('/reset-password', { replace: true });
     }
-  }, []);
+  }, [navigate]);
 
   useEffect(() => {
     api.getPrograms()
@@ -110,10 +136,10 @@ export default function App() {
   };
 
   const handleBackFromForgot = () => {
-    setAuthModeState('login');
     setAuthError('');
     setForgotMessage('');
     setDevResetLink('');
+    navigate('/login');
   };
 
   const handleResetPassword = async (e) => {
@@ -134,7 +160,6 @@ export default function App() {
       const res = await api.resetPassword({ token: resetToken, password: p });
       setStudent(res.student);
       setResetToken(null);
-      setAuthModeState('login');
     } catch (err) {
       setAuthError(err.message);
     } finally {
@@ -143,14 +168,15 @@ export default function App() {
   };
 
   const handleSwitchToLogin = () => {
-    setAuthModeState('login');
     setAuthError('');
     setResetToken(null);
+    navigate('/login');
   };
 
   const handleLogout = async () => {
     await api.logout();
     setStudent(null);
+    navigate('/login');
   };
 
   if (loading) {
@@ -162,15 +188,13 @@ export default function App() {
   }
 
   if (!student) {
+    if (!isAuthPath) {
+      return <Navigate to="/login" replace />;
+    }
     return (
       <AuthPage
         authMode={authMode}
-        setAuthMode={(mode) => {
-          setAuthModeState(mode);
-          setForgotMessage('');
-          setDevResetLink('');
-          if (mode !== 'reset') setResetToken(null);
-        }}
+        setAuthMode={setAuthMode}
         setAuthError={setAuthError}
         authError={authError}
         authLoading={authLoading}
@@ -187,6 +211,10 @@ export default function App() {
         devResetLink={devResetLink}
       />
     );
+  }
+
+  if (isAuthPath) {
+    return <Navigate to="/dashboard" replace />;
   }
 
   return <CourseAdvisor student={student} onLogout={handleLogout} onProfileUpdate={setStudent} />;
