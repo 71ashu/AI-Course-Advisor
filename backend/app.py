@@ -23,7 +23,10 @@ from services import (
     get_degree_progress, get_recommendations,
     find_course_by_query, get_course_detail,
 )
-from llm import get_advisory_message, get_course_detail_message
+from llm import (
+    get_advisory_message, get_course_detail_message, get_general_message,
+    interpret_request,
+)
 from knowledge_graph import get_path_to_course, get_graph_summary
 
 app = Flask(__name__)
@@ -378,17 +381,29 @@ def recommend():
 
     db.session.add(Message(conversation_id=convo.id, role='user', content=query))
 
-    # If the student named a specific course by code (e.g. "tell me about
-    # CSEN 342"), answer conversationally about that one course instead of
-    # framing the reply around a ranked recommendation list.
-    named_course = find_course_by_query(query)
+    # Route the message: a deep-dive on one named course, a ranked list of
+    # recommendations, or a plain conversational answer. Recommendations are
+    # ranked on a standalone search query resolved from the conversation, so
+    # follow-ups ("more of these", "I meant 3XX") keep earlier constraints.
+    route = interpret_request(query, history=history)
+    named_course = find_course_by_query(query) if route['intent'] == 'course_detail' else None
     if named_course:
         detail = get_course_detail(student, named_course)
         message = get_course_detail_message(student, query, detail, history=history)
         recommendations = [detail]
+    elif route['intent'] == 'recommend':
+        search_query = route['search_query']
+        recommendations = get_recommendations(student, search_query)
+        message = get_advisory_message(
+            student, query, recommendations, history=history, search_query=search_query,
+        )
     else:
-        recommendations = get_recommendations(student, query)
-        message = get_advisory_message(student, query, recommendations, history=history)
+        # General question (requirements, GPA, careers, small talk): answer it
+        # directly without attaching a ranked course list nobody asked for.
+        recommendations = []
+        message = get_general_message(
+            student, query, progress=get_degree_progress(student), history=history,
+        )
 
     db.session.add(Message(
         conversation_id=convo.id, role='assistant',

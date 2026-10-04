@@ -13,7 +13,7 @@ REQUIRED_CREDITS = 120
 
 # Subject prefixes often used in catalogs (SCU-style EMGT/ENGR/CSEN, etc.).
 KNOWN_SUBJECT_PREFIXES = frozenset({
-    'AMTH', 'BIO', 'CHEM', 'COEN', 'CSEN', 'CSCI', 'ECON', 'EE', 'ELEN',
+    'AMTH', 'BIO', 'CHEM', 'COEN', 'CSEN', 'CSCI', 'ECEN', 'ECON', 'EE', 'ELEN',
     'EMGT', 'ENGR', 'ENG', 'MATH', 'MECH', 'PHYS', 'PSYC', 'STAT',
 })
 
@@ -35,8 +35,16 @@ QUERY_STOPWORDS = frozenset({
     'course', 'courses', 'class', 'classes', 'semester', 'term', 'year',
     'next', 'recommend', 'recommendations', 'looking', 'help', 'show',
     'give', 'find', 'suggest', 'about', 'instead', 'rather', 'something',
-    'anything', 'everything', 'non',
+    'anything', 'everything', 'non', 'level', 'levels', 'series',
 })
+
+# "300-level", "300 level", "3XX", "300s", "300-series", "level 300".
+_LEVEL_PATTERNS = [
+    r'\b([1-9])00\s*-?\s*(?:level|series)\b',
+    r'\blevel\s*-?\s*([1-9])00\b',
+    r'\b([1-9])xx\b',
+    r'\b([1-9])00s\b',
+]
 
 
 def _subject_prefix(course_id):
@@ -46,6 +54,17 @@ def _subject_prefix(course_id):
     s = str(course_id).strip().upper()
     m = re.match(r'^([A-Z]+)', s)
     return m.group(1) if m else ''
+
+
+def _course_levels(course):
+    """Hundreds digit of a course number and its cross-listed codes
+    (e.g. CSEN 313 -> {3})."""
+    levels = set()
+    for code in [course.id] + list(course.alt_codes or []):
+        m = re.search(r'(\d)\d\d', str(code or ''))
+        if m:
+            levels.add(int(m.group(1)))
+    return levels
 
 
 def _course_prefixes(course):
@@ -90,14 +109,39 @@ def _parse_query_focus(query):
     if re.search(r'\b(?:non|outside|excluding|without|avoid|skip)\s*[-]?\s*cs\b(?![a-z0-9])', ql):
         exclude_prefixes.update(CS_SUBJECT_PREFIXES)
 
+    # Generic exclusions for any known subject: "excluding EMGT", "non-ENGR",
+    # "without EMGT or ENGR". Without this, the excluded code would be read
+    # as a requested subject below and boosted instead.
+    for m in re.finditer(
+        r'\b(?:non|outside(?:\s+of)?|excluding|exclude|except|without|avoid|skip|other\s+than)\s*-?\s*'
+        r'((?:[a-z]{2,8}(?:\s*(?:,|/|and|or)\s*)?)+)',
+        ql,
+    ):
+        for word in re.findall(r'[a-z]+', m.group(1)):
+            if word in ('and', 'or'):
+                continue
+            if word.upper() not in KNOWN_SUBJECT_PREFIXES:
+                break
+            exclude_prefixes.add(word.upper())
+    if exclude_prefixes & {'CSEN', 'COEN', 'CSCI'}:
+        exclude_prefixes.update(CS_SUBJECT_PREFIXES)
+
     tokens_upper = set(re.findall(r'\b([A-Z]{2,8})\b', re.sub(r'[/]', ' ', raw).upper()))
     include_prefixes = {
         t for t in tokens_upper
         if t in KNOWN_SUBJECT_PREFIXES and t not in exclude_prefixes
     }
 
+    levels = set()
+    for pattern in _LEVEL_PATTERNS:
+        for m in re.finditer(pattern, ql):
+            levels.add(int(m.group(1)))
+    level_free = ql
+    for pattern in _LEVEL_PATTERNS:
+        level_free = re.sub(pattern, ' ', level_free)
+
     semantic_tokens = []
-    for w in re.findall(r'[a-z0-9]+', ql):
+    for w in re.findall(r'[a-z0-9]+', level_free):
         if len(w) < 3 or w in QUERY_STOPWORDS:
             continue
         if w in {x.lower() for x in KNOWN_SUBJECT_PREFIXES}:
@@ -108,7 +152,41 @@ def _parse_query_focus(query):
         'exclude_prefixes': exclude_prefixes,
         'include_prefixes': include_prefixes,
         'semantic_tokens': semantic_tokens,
+        'levels': levels,
     }
+
+
+_RECOMMENDATION_PATTERNS = [
+    r'\brecommend', r'\bsuggest', r'\bsuggestions?\b', r'\bpicks?\b',
+    r'\bwhat (?:courses?|classes?|electives?) should\b',
+    r'\bwhich (?:courses?|classes?|electives?)\b',
+    r'\bwhat should i (?:take|enroll|register|sign up)\b',
+    r'\bshould i take\b',
+    r'\b(?:courses?|classes?|electives?) (?:for|in|on|about|related|that|to take|i can take)\b',
+    r'\b(?:find|show|give|list) (?:me )?(?:some |a few |more |other )?(?:courses?|classes?|electives?|options)\b',
+    r'\b(?:good|easy|easier|harder|best|interesting|other|more|alternative|similar) (?:courses?|classes?|electives?|options)\b',
+    r'\b(?:take|enroll in|register for) next\b',
+    r'\bnext (?:semester|quarter|term)\b',
+    r'\b(?:alternatives?|other options)\b',
+    r'\b[1-9]00\s*-?\s*(?:level|series)\b', r'\b[1-9]xx\b',
+    r'\b(?:non|outside|excluding|without|avoid|skip)\s*-?\s*(?:csen|csci|coen|cs)\b',
+]
+
+
+def looks_like_recommendation_request(query):
+    """Keyword heuristic for whether the student is asking us to pick courses
+    for them, as opposed to a general question ("how many units do I need?",
+    "thanks!"). Used when no LLM is available to classify intent."""
+    ql = (query or '').strip().lower()
+    if not ql:
+        return False
+    return any(re.search(p, ql) for p in _RECOMMENDATION_PATTERNS)
+
+
+def count_course_codes(query):
+    """Number of distinct course-code-looking tokens (e.g. "CSEN 342") in a query."""
+    tokens = re.findall(r'\b[A-Za-z]{2,6}\s?-?\s?\d{3}[A-Za-z]?\b', query or '')
+    return len({re.sub(r'[\s-]+', '', t).upper() for t in tokens})
 
 
 def find_course_by_query(query):
@@ -558,6 +636,19 @@ def get_recommendations(student, query='', limit=6):
             'explanationFactors': factors,
             'predictedGrade': grade_prediction,
         })
+
+    # Explicitly requested subjects and course levels are hard constraints:
+    # a student asking for "CSEN 300-level courses" should not get EMGT 2XX
+    # picks just because those score well on interests. Only fall back to the
+    # unfiltered ranking if nothing at all satisfies the request.
+    if query_focus and query_focus['include_prefixes']:
+        matching = [x for x in scored if _course_prefixes(x['course']) & query_focus['include_prefixes']]
+        if matching:
+            scored = matching
+    if query_focus and query_focus['levels']:
+        matching = [x for x in scored if _course_levels(x['course']) & query_focus['levels']]
+        if matching:
+            scored = matching
 
     scored.sort(key=lambda x: x['score'], reverse=True)
     safe_limit = max(int(limit or 6), 1)
